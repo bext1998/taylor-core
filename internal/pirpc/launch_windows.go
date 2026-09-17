@@ -22,7 +22,8 @@ import (
 // decoded here (see runtime.go).
 
 const (
-	createSuspended = 0x00000004
+	createSuspended          = 0x00000004
+	createUnicodeEnvironment = 0x00000400
 
 	jobObjectLimitKillOnJobClose = 0x00002000
 
@@ -487,18 +488,23 @@ func startSuspendedProcess(workDir, cmdLine string, stdin, stdout, stderr syscal
 
 	var pi syscall.ProcessInformation
 	var envPtr *uint16
+	flags := uint32(createSuspended) // STARTED_SUSPENDED, not running until assigned to the job
 	if len(env) > 0 {
 		envPtr = &env[0]
+		// buildEnvBlock always encodes a UTF-16 block; without this flag
+		// CreateProcess reinterprets lpEnvironment as an ANSI multi-string
+		// and rejects it with ERROR_INVALID_PARAMETER.
+		flags |= createUnicodeEnvironment
 	}
 	err = syscall.CreateProcess(
-		nil,             // lpApplicationName: quoted path in cmdLine is argv[0]
-		cmdLinePtr,      // lpCommandLine
-		nil,             // process security attributes
-		nil,             // thread security attributes
-		true,            // inherit handles
-		createSuspended, // STARTED_SUSPENDED, not running until assigned to the job
-		envPtr,          // environment block (nil when empty)
-		workDirPtr,      // current directory
+		nil,        // lpApplicationName: quoted path in cmdLine is argv[0]
+		cmdLinePtr, // lpCommandLine
+		nil,        // process security attributes
+		nil,        // thread security attributes
+		true,       // inherit handles
+		flags,
+		envPtr,     // environment block (nil when empty)
+		workDirPtr, // current directory
 		si,
 		&pi,
 	)
