@@ -1,6 +1,6 @@
 # Brunel — 當前狀態
 
-> 最後同步：2026-09-11
+> 最後同步：2026-09-17
 > Branch：main
 > Working tree：乾淨（與 `origin/main` 同步）
 
@@ -13,22 +13,23 @@
 
 ## 進行中 Issues
 
-- [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1) 已依 v1.2 對齊；未完成子項為 #2、#4、#7、#9、#11、#14、#22、#29（#30 已於 PR #36 完成並 CLOSED）。#8、#9 已依 ADR-002／v1.3 重新拆解完成（見「架構轉向」）；#4／#8 核心實作已合併（見下）。
+- [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1) 已依 v1.2 對齊；未完成子項為 #2、#4、#7、#9、#11、#14、#22、#29（#30 已於 PR #36 完成並 CLOSED）。#8、#9 已依 ADR-002／v1.3 重新拆解完成（見「架構轉向」）；#4／#8 核心實作已合併，#9 核心已送出 PR #40 待 review（見下）。
 - [#4 F-3：8 個固定內建工具與凍結 schema](https://github.com/bext1998/brunel/issues/4) 的 `internal/tools` 核心實作已透過 PR #33 合併至 `main`：固定 registry、嚴格 JSON／必填欄位驗證（`DisallowUnknownFields`、拒 `null`／尾隨 JSON、無自動補值）、8 工具的結構化 `Result`，以及每個 I/O 路徑在 workspace resolve、`filetools`、Git 或 PowerShell 前經真實 `safety.Gate.Decide`（INV-1）。新增 `list_files`、`search_text`、Git-only `workspace_diff`；其餘工具接上既有 `filetools`／`exec`。經兩個隔離 Sonnet subagent 審查並修正兩個 major（INV-1 no-bypass 測試補齊 8 工具的 `Registry{Gate:nil}` 反例；`tools.ErrorCode` 串接 `safety`／`workspace`／`filetools`／`exec` 的 `ErrorCode`）。TC-WS／TC-FILE／TC-SAFE 覆蓋與 Windows AC-6 閉環測試通過；CI `windows-latest`＋`ubuntu-latest` 綠。殘留 minor／nit（`workspace_diff` timeout 混碼與漏 staged／untracked、`search_text` 無上限、`max_depth:0` 未文件化、巢狀 null coerce 等）記於 [#4 review 註解](https://github.com/bext1998/brunel/issues/4#issuecomment-5620453317)。`--taylor-tool` 進入點與 `taylor-tools.ts` 已由 PR #37（#29 核心）合併；Pi bridge 屬 #9。
 - [#5 F-4：實作 stale-read hash 防護與原子寫入](https://github.com/bext1998/brunel/issues/5) 核心實作已透過 PR #26 合併至 `main`（`internal/filetools`）：全檔 SHA-256、`create_file`／`write_file`／`apply_patch` 的 `expected_hash` 前置條件、精確 hunk 套用（無自動 merge／模糊比對）、暫存檔＋鎖內重驗＋原子換檔；stale hash、patch conflict、overlap、缺失目標、失敗寫入與鎖衝突皆保留原檔且有界失敗。#4（PR #33）已將它接至 `workspace.Workspace` 與 §5.4 工具呼叫路徑，並經 PR #37 的 `brunel --taylor-tool` 進入點可從子行程呼叫；真實 Pi RPC E2E 驗證待 #9。INV-6 為 best-effort（見 spec §10／OQ-10）。
 - [#7 F-6：實作 AUTO／CONFIRM 事故防護與 Approver](https://github.com/bext1998/brunel/issues/7) 核心實作已透過 PR #27 合併至 `main`（`internal/safety`）：單一安全決策入口 `Gate.Decide`、`Risk`／`ApprovalPrompt`／`Approver`（依 spec.md §5.2／§6.2 FROZEN 定義）、readonly 模式的確定性拒絕（不呼叫 Approver）、無 TTY 時 `E_APPROVAL_REQUIRED_NO_TTY` 快速失敗、`run_powershell` 針對 §6.2 六類代表命令（強制／遞迴刪除、清空內容、大量移動覆寫、git 狀態變更、安裝或更新套件、網路傳輸、背景程序／job、workspace 外絕對路徑）的字串／token 分類。#4（PR #33）已在 8 工具的實際 I/O 前接上 `Gate.Decide`、`filetools`、`workspace` 與 `exec`（INV-1 反例測試已涵蓋 8 工具）；實際 TUI／純文字 Approver 仍屬 #2。best-effort classifier 的漏判／過度確認強化見 [#31](https://github.com/bext1998/brunel/issues/31)。
 - [#8 F-7：實作 Provider Adapter（Pi delegated，ADR-002）](https://github.com/bext1998/brunel/issues/8) 核心實作已透過 PR #28 合併至 `main`（`internal/pirpc` 新套件＋共用的 `internal/redact` leaf 套件）：`BuildArgs` 依 spec §5.1 字面凍結命令組出啟動參數；`LaunchOptions.EffectiveProvider()` 是唯一的 effective-provider 解析點（顯式 `Provider`，否則取 `Model` 第一段前綴），`InjectCredentialsForLaunch` 用它注入憑證，因此只給 provider-prefixed model（不帶 `--provider`）也拿得到 Credential Manager key；`InjectCredentials` 要求傳入 `Credential{Provider, APIKey}`，provider 身份不符回 `E_PI_CREDENTIAL_MISMATCH` 且不注入，既有變數以 `EqualFold` 比對（Windows 大小寫不敏感）並改寫為正式名稱。`TranslateProviderError` 先以**原始**訊息分類，再只把遮罩後訊息放進公開 error（協定錯誤碼沿用 spec EC-11 的 `E_PROVIDER_PROTOCOL`）；`internal/redact.Secrets` 除啟發式規則外可接受呼叫端已知的實際 credential 值做精確替換（涵蓋 `sk-` 以外格式）。**殘留限制**：Pi 自行探索、Brunel 從未持有的 provider key 只剩啟發式遮罩，公開錯誤契約在該邊界的責任歸屬仍待 spec 決議。INV-9 的完整 AST 檢查＋CI 階段與正式 `TC-PIRPC-001` 已由 PR #36（Issue #30，CLOSED）完成（`go/ast` 解析、`+` 串接／同檔 const 解析、`json.Unmarshal` 後檢查 `type=="bash"`；`go test` 前的 CI step）。不含 Pi 子行程啟動／生命週期管理與 RPC event 轉譯（屬 #9）。
+- [#9 F-8：橋接 Pi RPC 子行程與 Agent／EventSink](https://github.com/bext1998/brunel/issues/9) 核心已送出 [PR #40](https://github.com/bext1998/taylor-core/pull/40)，等待 review：新增 `internal/agent`（FROZEN `Agent`/`EventSink`/`Event`/`EventKind` 契約＋`Runtime` 橋接）、`internal/completion`／`internal/provider`（`completion.Report`／`provider.Usage` 最小型別，完整填值留給 #14）；`internal/pirpc` 新增 `runtime.go`（RPC event 解碼、`prompt`／`abort` command，INV-9 沿用「`type` 只能是 `prompt`／`abort`」）與 `launch_windows.go`（Job Object kill-on-close 管理 `pi --mode rpc` 子行程生命週期，`launch_nonwindows.go` 對非 Windows 回 `E_RUNTIME_REQUIRED`）。AGENTS.md 注入僅工作區根目錄最小版本，就近載入屬 #11；Approver 實際實作仍屬 #2。`go build`／`vet`／`test` 在 `windows-latest` 與 `GOOS=linux`（ubuntu-latest 可攜性防線）兩條路徑皆已重跑驗證通過，`TestTCPIRPC001` 通過；PR 送審前修過一個 `internal/pirpc/launch_nonwindows.go` 的 `piProcess`/`PiProcess` 大小寫不一致（會讓 linux 交叉編譯失敗）。
 - [#22 F-13：建立 Alpha 1 三類 E2E fixtures](https://github.com/bext1998/brunel/issues/22) 已新增；#2、#7、#9、#14 已分別同步薄型 TUI、事故防護、EventSink 與客觀 CompletionReport 範圍。
 
 ## 阻塞 Issues
 
 - 無規格決策阻塞 Alpha 1 實作。`docs/spec.md` §5／§9 的 Route B 修訂已於 v1.3（`7e9e01e`）完成。
 - #13（完成證據狀態機）與 #15（Smoke Benchmark Runner）已依 v1.2 以 `not planned` 關閉。
-- 可執行前線（無開放阻塞）：**#9**（Pi RPC 子行程 ↔ `Agent`／`EventSink` 橋接——相依 #4／#8／#29 核心均已合併、#30 已 CLOSED，現可排入；#29 issue 待 #9 一併收尾）、**#31**（§6.2 classifier 強化，無硬阻塞、建議發布前完成）。#4／#5／#7／#8／#29 核心與 #30 皆已落地；#2 待 #9；#11 待 #9；#14 待 #9；#22 待多項；#4 F-3 收尾項見 review 註解。
+- 可執行前線（無開放阻塞）：**#31**（§6.2 classifier 強化，無硬阻塞、建議發布前完成）。#9 核心已送出 PR #40 待 review，不再是待排入前線；#4／#5／#7／#8／#29 核心與 #30 皆已落地；#2 待 #9；#11 待 #9；#14 待 #9；#22 待多項；#4 F-3 收尾項見 review 註解。
 
 ## 等待 Review
 
-- 無。
+- [PR #40](https://github.com/bext1998/taylor-core/pull/40)（#9 F-8 核心，`internal/agent`＋`internal/completion`＋`internal/provider`＋`internal/pirpc` 新增檔案）：分支 `maze/2026-09-17-082200`，尚未 review、尚未 merge。
 
 ## 等待 Merge
 
@@ -77,4 +78,5 @@
 - AC-9～AC-11（AUTO 體驗、CONFIRM 分類、readonly／無 TTY）對應的 #7 核心決策邏輯與單元測試已合併（PR #27），#4（PR #33）已完成 `internal/tools` 層的工具接線與 registry 反例測試；正式判定仍待 #2（TUI／純文字 Approver 實作）與 #9（真實 Pi 呼叫路徑）後的整合測試。`--taylor-tool` 子行程無 TTY，CONFIRM `run_powershell` 固定回 `E_APPROVAL_REQUIRED_NO_TTY`（PR #37 已註明，批准 UX 屬 #9）。§6.2 classifier 的漏判／過度確認強化見 #31。
 - AC-4（Provider 與憑證）對應的 #8 已完成 `internal/pirpc` 的 provider／model 透傳、憑證環境變數注入與錯誤轉譯核心邏輯與單元測試（PR #28），但未經真實 Pi RPC 子行程驗證（子行程啟動／管理屬 #9）；`OPENROUTER_API_KEY` 等憑證環境變數命名依 Issue #24 Spike 分支的偵測結果，未對照 Pi 正式文件逐一確認。Pi 自行探索、Brunel 從未持有的 provider key 若被回顯於錯誤訊息，只能做啟發式遮罩；公開錯誤不含 secret 的最終責任邊界待 spec 或 #9 定義。
 - `internal/exec` 的 Timeout／MaxProcesses／MaxMemoryBytes／MaxOutputBytes 一律由呼叫端明確提供，套件本身不內建預設值；Alpha 1 不再需要 benchmark 硬性預算。
+- PR #40 review 過程中觀察到 `internal/exec` 的 `TestPSRunner_Timeout_KillsProcessTree` 在高系統負載下偶發失敗（"grandchild never wrote a counter value"）、單獨重跑即過；`internal/exec` 本身未被 PR #40 觸及，判斷為既有的計時類 flaky test，非本次變更引入，記錄供之後排查。
 - repository 的 `go.mod` 目前仍是 Go 1.22；本次依約不修改程式碼或依賴，後續實作 TUI 前需另行同步至 Go 1.25.x。
