@@ -29,6 +29,9 @@ coverage.*
 Thumbs.db
 Desktop.ini
 
+# Node dependencies (taylor-tools.ts type-checking; package-lock.json is tracked)
+node_modules/
+
 # Temporary files
 tmp/
 temp/

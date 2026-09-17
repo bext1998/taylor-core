@@ -77,6 +77,31 @@ func TestStartPiProcessLifecycle(t *testing.T) {
 	}
 }
 
+// TestStartPiProcessWithCustomEnvironment covers a real launch always
+// supplying a non-empty custom environment block (Start always passes
+// os.Environ() plus BRUNEL_EXE/BRUNEL_MODE, per runtime.go). A UTF-16
+// lpEnvironment block requires CREATE_UNICODE_ENVIRONMENT; without it
+// CreateProcess rejects the block with ERROR_INVALID_PARAMETER regardless
+// of which executable is launched, and TestStartPiProcessLifecycle's nil
+// env never exercises that path.
+func TestStartPiProcessWithCustomEnvironment(t *testing.T) {
+	piPath := buildFakePi(t)
+
+	env := append(os.Environ(), "BRUNEL_EXE=fake.exe", "BRUNEL_MODE=workspace")
+	proc, err := startPiProcess(context.Background(), piPath, []string{"--mode", "rpc"}, env, ".")
+	if err != nil {
+		t.Fatalf("startPiProcess() with custom environment error = %v", err)
+	}
+	defer proc.Close()
+
+	if err := proc.SendPrompt("do work"); err != nil {
+		t.Fatalf("SendPrompt() error = %v", err)
+	}
+	if !awaitAck(proc) {
+		t.Fatal("did not receive a success command ack")
+	}
+}
+
 // TestCloseIsIdempotent covers the review finding that the Windows handle
 // leaked its process/thread handles and that Close was not idempotent. It
 // starts a real subprocess, then calls Close twice: the second call must be
