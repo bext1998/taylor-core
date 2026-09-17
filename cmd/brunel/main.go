@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -44,12 +45,27 @@ type taylorToolConfig struct {
 	maxOutputBytes int64
 }
 
+// AgentsMDContext is the near-directory AGENTS.md (issue #11, spec
+// §7.3) for the path a successful tool call touched. taylor-tools.ts
+// renders it into the tool result's content array so the model sees the
+// rules that apply to that directory alongside the result. It is display
+// context only: no safety, hash, or other decision-making code ever reads
+// it, so AGENTS.md content cannot authorize a tool, change an
+// AUTO/CONFIRM classification, or bypass a tool precondition.
+type AgentsMDContext struct {
+	// Source is the workspace-relative directory the AGENTS.md was read
+	// from.
+	Source  string `json:"source"`
+	Content string `json:"content"`
+}
+
 type taylorToolResponse struct {
-	Tool      string        `json:"tool"`
-	Result    *tools.Result `json:"result,omitempty"`
-	Status    string        `json:"status"`
-	ErrorCode string        `json:"error_code,omitempty"`
-	Message   string        `json:"message,omitempty"`
+	Tool      string           `json:"tool"`
+	Result    *tools.Result    `json:"result,omitempty"`
+	Status    string           `json:"status"`
+	ErrorCode string           `json:"error_code,omitempty"`
+	Message   string           `json:"message,omitempty"`
+	AgentsMD  *AgentsMDContext `json:"agents_md,omitempty"`
 }
 
 func main() {
@@ -176,7 +192,15 @@ func runTaylorTool(ctx context.Context, config taylorToolConfig, input io.Reader
 		return writeTaylorToolFailure(output, config.name, code)
 	}
 
-	writeTaylorToolResponse(output, taylorToolResponse{Tool: config.name, Result: &result, Status: "ok"})
+	response := taylorToolResponse{Tool: config.name, Result: &result, Status: "ok"}
+	// Issue #11 (F-10): attach the AGENTS.md that applies to the path this
+	// call touched. The lookup runs only after a successful call, reads
+	// only, and feeds only the response - never the gate, hash guards, or
+	// any other decision. A failed call carries no agents_md.
+	if source, content, ok := nearAgentsMD(workspaceBinding, config.name, params); ok {
+		response.AgentsMD = &AgentsMDContext{Source: source, Content: content}
+	}
+	writeTaylorToolResponse(output, response)
 	return 0
 }
 
@@ -193,6 +217,113 @@ func writeTaylorToolFailure(output io.Writer, tool, code string) int {
 func writeTaylorToolResponse(output io.Writer, response taylorToolResponse) {
 	if err := json.NewEncoder(output).Encode(response); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "brunel: write response:", err)
+	}
+}
+
+// agentsMDParam reports which JSON parameter carries the workspace path a
+// tool call touches, if any. File targets are looked up from their
+// containing directory; directory targets (list_files, workspace_diff,
+// run_powershell cwd) from the directory itself. A call without the
+// parameter falls back to the workspace-root AGENTS.md, which the initial
+// prompt already carries.
+func agentsMDParam(name string) (string, bool) {
+	switch name {
+	case "list_files", "search_text", "read_file", "apply_patch",
+		"create_file", "write_file", "workspace_diff":
+		return "path", true
+	case "run_powershell":
+		return "cwd", true
+	}
+	return "", false
+}
+
+// nearAgentsMD finds the AGENTS.md that applies to the path a tool call
+// touched (issue #11, spec §7.3): starting from the target's directory
+// and walking up to the workspace root, the nearest directory that
+// contains an AGENTS.md wins (較近者優先). The walk stops before the
+// workspace root itself: the root's AGENTS.md is already in the model's
+// initial prompt, so re-sending it in every tool result would add no
+// information. When no subdirectory level has an AGENTS.md, ok is false
+// and the root rules remain the only ones in force (existing #9
+// behavior).
+//
+// Every directory level is resolved through Workspace.Resolve, so the
+// walk cannot follow a symlink, junction, or absolute path out of the
+// workspace - the lookup adds no file-read channel that bypasses the
+// existing escape protection. Any lookup failure returns ok=false: the
+// lookup is display context and must never fail or alter a tool call.
+//
+// The content is re-read on every call; there is no cache, so an AGENTS.md
+// added, modified, or removed between calls takes effect immediately.
+//
+// Known limitation (spec §7.3 says "read before operating"): --mode rpc
+// has no pre-call context channel, so the nearest rule first becomes
+// visible in the tool result that touches the directory; subsequent
+// operations in the same directory then run with the rule in context.
+func nearAgentsMD(w *workspace.Workspace, name string, params json.RawMessage) (string, string, bool) {
+	param, ok := agentsMDParam(name)
+	if !ok {
+		return "", "", false
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(params, &fields); err != nil {
+		return "", "", false
+	}
+	raw, present := fields[param]
+	if !present {
+		return "", "", false
+	}
+	var rel string
+	if err := json.Unmarshal(raw, &rel); err != nil || strings.TrimSpace(rel) == "" {
+		return "", "", false
+	}
+	rel = filepath.Clean(rel)
+
+	// Resolve the target through the workspace first: absolute paths,
+	// ..-escapes, and anything that leaves the bound root fail here, as
+	// they do for the tool itself.
+	target, err := w.Resolve(rel)
+	if err != nil {
+		return "", "", false
+	}
+
+	// A file target's rules come from its directory; a directory target
+	// (list_files, cwd, workspace_diff) from itself. A missing target
+	// (create_file) is treated as a file.
+	baseRel := rel
+	if info, err := os.Stat(target); err == nil && info.IsDir() {
+		baseRel = rel
+	} else {
+		baseRel = filepath.Dir(rel)
+	}
+
+	// Walk from the nearest directory to the workspace root, resolving
+	// every level through the workspace. filepath.Dir strictly shortens a
+	// clean relative path until ".", so the loop always terminates.
+	for {
+		if baseRel == "." {
+			return "", "", false
+		}
+		level, err := w.Resolve(baseRel)
+		if err != nil {
+			return "", "", false
+		}
+		candidate := filepath.Join(level, "AGENTS.md")
+		// Use Lstat (not Stat) so a symlinked AGENTS.md pointing outside
+		// the workspace is not followed (security: no new read channel).
+		if info, err := os.Lstat(candidate); err == nil && info.Mode().IsRegular() {
+			data, err := os.ReadFile(candidate)
+			if err == nil {
+				if content := strings.TrimSpace(string(data)); content != "" {
+					return baseRel, content, true
+				}
+			}
+		}
+		parent := filepath.Dir(baseRel)
+		if parent == baseRel {
+			return "", "", false
+		}
+		baseRel = parent
 	}
 }
 
