@@ -11,12 +11,20 @@ const execFileAsync = promisify(execFile);
 // Go-side response/size cap, tracked with the other internal/tools follow-ups.
 const maxResponseBytes = 64 * 1024 * 1024;
 
+type AgentsMDContext = {
+  source: string;
+  content: string;
+};
+
 type ToolResponse = {
   tool: string;
   status: string;
   result?: unknown;
   error_code?: string;
   message?: string;
+  // Near-directory AGENTS.md (issue #11) for the path this call touched.
+  // Display context only; never used for authorization or safety checks.
+  agents_md?: AgentsMDContext;
 };
 
 function brunelExecutable(): string {
@@ -83,11 +91,25 @@ async function invokeTool(name: string, params: Record<string, unknown>, signal:
   }
 }
 
+function agentsMDText(md: AgentsMDContext): string {
+  return (
+    `---Workspace agent instructions (AGENTS.md) — applies to: ${md.source}---\n` +
+    md.content +
+    `\n---end of AGENTS.md---`
+  );
+}
+
 function executeTool(name: string) {
   return async (_toolCallId: string, params: Record<string, unknown>, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
     const response = await invokeTool(name, params, signal, ctx);
+    const content: { type: "text"; text: string }[] = [
+      { type: "text", text: JSON.stringify(response.result, null, 2) },
+    ];
+    if (response.agents_md) {
+      content.push({ type: "text", text: agentsMDText(response.agents_md) });
+    }
     return {
-      content: [{ type: "text", text: JSON.stringify(response.result, null, 2) }],
+      content,
       details: response.result,
     };
   };
