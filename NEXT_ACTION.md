@@ -1,20 +1,20 @@
 # Brunel — 下一步行動
 
-> 最後同步：2026-09-11
+> 最後同步：2026-09-17
 
 ## 下一個 Session 目標
 
-#4（F-3，`internal/tools`）、#29（`taylor-tools.ts` ＋ `cmd/brunel --taylor-tool`）核心分別經 PR #33／PR #37 合併至 `main`；#30（INV-9 AST 檢查）經 PR #36 完成並 **CLOSED**。#5／#7／#8 核心早先已合併。`cmd/brunel`（repo 第一個可執行檔，僅 `--taylor-tool` 路徑）已在 `main`。可執行前線收斂為 **#9**（Pi RPC 橋接，相依核心均已落地）與獨立的 **#31**。
+#9（F-8：Pi RPC 子行程 ↔ `Agent`／`EventSink` 橋接）核心已透過 [PR #40](https://github.com/bext1998/taylor-core/pull/40) 合併至 `main`（commit `c620351`），經 codex 三輪隔離審查修正（settle 分類改以 `message_end.stopReason` 為準、session 寫入失敗一律回報 `failed`、Windows handle 洩漏與 `toolcall_end` 解碼錯誤）。#4／#5／#7／#8／#29／#30 均已落地。可執行前線收斂為 **#2／#11／#14／#22**（皆已解除 #9 阻塞）與獨立的 **#31**。**真實 `pi --mode rpc` 端到端仍未驗證**，目前只有 `internal/pirpc/testdata/fakepi` 的子行程整合測試。
 
 ## 優先行動
 
-1. 實作 **#9**（F-8：Pi RPC 子行程 ↔ `Agent`／`EventSink` 橋接）：相依 #4／#8／#29 核心與 #30 皆已落地，現可排入。啟動並管理 `pi --mode rpc --no-builtin-tools --no-extensions -e taylor-tools.ts --no-session --provider <p> --model <m>` 子行程；把 RPC event（`message_update`、`tool_execution_start`／`end`、`agent_end`…）轉譯為既有 `agent.Event`／`EventKind`；注入 AGENTS.md；轉譯後 event append 至 Brunel 自己的 `events.jsonl`。橋接前須決定 `workspace_diff` 語意 vs §8 CompletionReport 的 `Diff`（git-only 且只看未暫存變更會漏新建／staged 檔）——見 [#9 review 交接註解](https://github.com/bext1998/brunel/issues/9#issuecomment-5620455153)。此路徑打通後即可正式判定 AC-2／AC-6／AC-7／AC-9～AC-11／AC-14。
-2. **#31**（§6.2 classifier 漏判／過度確認強化，PR #27 事後審查）：無硬阻塞、獨立於 #9，建議 Alpha 1 發布前完成。
-3. F-3 收尾（不阻塞前線）：處理 [#4 review 註解](https://github.com/bext1998/brunel/issues/4#issuecomment-5620453317) 的 10 項 minor／nit（`workspace_diff` timeout 混碼＋stderr 汙染＋漏 staged／untracked、`search_text` 無上限、`max_depth:0` 文件化、巢狀 null coerce、缺失路徑錯誤碼、3 個測試缺口、`STATUS.md` 用詞）。另 #29 的 `taylor-tools.ts` 仍待真實 TS 編譯／Pi runtime 驗證、`typebox` 依賴重複、per-call re-bind 無 session root identity（INV-5）——皆屬 #9。
-4. INV-9 CI 防線的 follow-up（PR #36 review nit）：`go test -run '^TestTCPIRPC001$'` 在守衛測試被刪／改名時退出 0，靜默失去防線；可另讓 CI 斷言該測試存在。
-5. 收尾 #4／#5／#7／#8／#29 的 Issue：核心均已合併，剩餘工作由 #9／#2／#31 承接；確認各 Issue 是否隨 #9 一併關閉或先行關閉。
-6. 相依鏈：#2（含 `safety.Approver` 的 TUI／純文字實作）待 #9；#11 待 #9；#14 待 #9；#22 待多項。
-7. 規劃 #2 前將 Go module 基線由 1.22 同步至 1.25.x 並引入 Bubble Tea v2；此項需另行實作授權，與 Route B 無關（Host 層仍是 Go）。
+1. 排入 **#2**（含 `safety.Approver` 的 TUI／純文字實作，Go module 需先由 1.22 同步至 1.25.x 並引入 Bubble Tea v2，這項需另行實作授權）、**#11**（AGENTS.md 就近目錄規則載入與不可提權保護，#9 只做了工作區根目錄最小版本）、**#14**（CompletionReport 完整填值；`internal/completion.Report` 型別已就緒但 `Diff`／`ToolFailures`／`RemainingRisks` 大多留空，需先裁決 `workspace_diff` 語意 vs `Diff` 欄位——見 [#9 review 交接註解](https://github.com/bext1998/brunel/issues/9#issuecomment-5620455153)）、**#22**（E2E fixtures，待其餘項目就緒）。
+2. **在排入 #2 之前，安排一次真實 `pi --mode rpc` 端到端驗證**（需要實際安裝 Node.js/npm 與 pi CLI 的環境）：目前 PR #40 的所有驗證都停在 fakepi 假子行程層級，AC-2／AC-6／AC-7／AC-9～AC-11／AC-14 都還不能算正式判定通過。
+3. **#31**（§6.2 classifier 漏判／過度確認強化，PR #27 事後審查）：無硬阻塞、獨立進行，建議 Alpha 1 發布前完成。
+4. F-3 收尾（不阻塞前線）：處理 [#4 review 註解](https://github.com/bext1998/brunel/issues/4#issuecomment-5620453317) 的 10 項 minor／nit（`workspace_diff` timeout 混碼＋stderr 汙染＋漏 staged／untracked、`search_text` 無上限、`max_depth:0` 文件化、巢狀 null coerce、缺失路徑錯誤碼、3 個測試缺口、`STATUS.md` 用詞）。另 #29 的 `taylor-tools.ts` 仍待真實 TS 編譯／Pi runtime 驗證、`typebox` 依賴重複、per-call re-bind 無 session root identity（INV-5）。
+5. INV-9 CI 防線的 follow-up（PR #36 review nit）：`go test -run '^TestTCPIRPC001$'` 在守衛測試被刪／改名時退出 0，靜默失去防線；可另讓 CI 斷言該測試存在。
+6. 收尾 #4／#5／#7／#8／#9／#29 的 Issue：核心均已合併，剩餘工作由 #2／#11／#14／#31 承接；確認各 Issue 是否隨對應後續工作一併關閉或先行關閉。
+7. **流程提醒（2026-09-17 使用者裁決）**：STATUS.md／NEXT_ACTION.md 的同步只在一個 PR 的 review 全部跑完（合併或確定關閉）之後才做，不要在 PR 剛開、審查還在進行中就先同步——PR #41 曾在 #40 剛送審時就先寫「等待 review」，結果 #40 又經過三輪修正才真的可合併，#41 內容很快過期，被使用者關閉重做。
 
 ## 阻塞與待決策
 
