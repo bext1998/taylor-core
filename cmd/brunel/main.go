@@ -255,6 +255,11 @@ func agentsMDParam(name string) (string, bool) {
 //
 // The content is re-read on every call; there is no cache, so an AGENTS.md
 // added, modified, or removed between calls takes effect immediately.
+//
+// Known limitation (spec §7.3 says "read before operating"): --mode rpc
+// has no pre-call context channel, so the nearest rule first becomes
+// visible in the tool result that touches the directory; subsequent
+// operations in the same directory then run with the rule in context.
 func nearAgentsMD(w *workspace.Workspace, name string, params json.RawMessage) (string, string, bool) {
 	param, ok := agentsMDParam(name)
 	if !ok {
@@ -304,7 +309,9 @@ func nearAgentsMD(w *workspace.Workspace, name string, params json.RawMessage) (
 			return "", "", false
 		}
 		candidate := filepath.Join(level, "AGENTS.md")
-		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
+		// Use Lstat (not Stat) so a symlinked AGENTS.md pointing outside
+		// the workspace is not followed (security: no new read channel).
+		if info, err := os.Lstat(candidate); err == nil && info.Mode().IsRegular() {
 			data, err := os.ReadFile(candidate)
 			if err == nil {
 				if content := strings.TrimSpace(string(data)); content != "" {

@@ -259,6 +259,61 @@ func TestTaylorToolAgentsMDNotInErrorResponse(t *testing.T) {
 }
 
 // writeFile is a test helper that creates parent directories.
+// TestTaylorToolAgentsMDSymlinkNotFollowed verifies the lookup does not
+// follow a symlinked AGENTS.md pointing outside the workspace: the
+// candidate is checked with Lstat, so a symlink is not a regular file
+// and is skipped (no new read channel outside the workspace).
+func TestTaylorToolAgentsMDSymlinkNotFollowed(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	outsideFile := filepath.Join(outside, "AGENTS.md")
+	if err := os.WriteFile(outsideFile, []byte("MALICIOUS INSTRUCTIONS"), 0o600); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "target.txt"), []byte("hello\n"), 0o600); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(sub, "AGENTS.md")); err != nil {
+		t.Skipf("cannot create symlink (needs privileges): %v", err)
+	}
+
+	response, exitCode := invokeTaylorTool(t, root, "workspace", "read_file", `{"path":"sub/target.txt"}`)
+	if exitCode != 0 {
+		t.Fatalf("exitCode = %d, response = %#v", exitCode, response)
+	}
+	if response.AgentsMD != nil {
+		t.Fatalf("symlinked AGENTS.md must not be injected: %+v", response.AgentsMD)
+	}
+}
+
+// TestTaylorToolAgentsMDDirNamedAgentsMDNotInjected verifies a directory
+// named AGENTS.md is not a regular file and is skipped by the lookup.
+func TestTaylorToolAgentsMDDirNamedAgentsMDNotInjected(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(sub, "AGENTS.md"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "target.txt"), []byte("hello\n"), 0o600); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+
+	response, exitCode := invokeTaylorTool(t, root, "workspace", "read_file", `{"path":"sub/target.txt"}`)
+	if exitCode != 0 {
+		t.Fatalf("exitCode = %d, response = %#v", exitCode, response)
+	}
+	if response.AgentsMD != nil {
+		t.Fatalf("directory named AGENTS.md must not be injected: %+v", response.AgentsMD)
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
