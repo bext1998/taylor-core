@@ -66,6 +66,14 @@ var (
 	// the credential handed in was resolved for a different provider than
 	// the one being launched; the key is not injected (see env.go).
 	ErrCredentialProviderMismatch = &Error{Code: "E_PI_CREDENTIAL_MISMATCH"}
+
+	// ErrPiRuntimeRequired is returned by Start when the Pi runtime
+	// (Node.js/npm and the pi executable) is missing or cannot be
+	// launched. Per spec.md §11 EC-13 the code is fixed as
+	// E_RUNTIME_REQUIRED (not Pi-prefixed) so a spec-driven consumer
+	// matches it; EC-13 names it for a missing Node.js/npm or a pi that
+	// fails to start.
+	ErrPiRuntimeRequired = &Error{Code: "E_RUNTIME_REQUIRED"}
 )
 
 func codeError(code, message string, cause error) error {
