@@ -47,8 +47,8 @@ var (
 	procCreateProcessW           = kernel32.NewProc("CreateProcessW")
 	procWriteFile                = kernel32.NewProc("WriteFile")
 
-	inheritableSecurityAttributes       = &syscall.SecurityAttributes{InheritHandle: 1}
-	nonInheritableSecurityAttributes    = &syscall.SecurityAttributes{InheritHandle: 0}
+	inheritableSecurityAttributes    = &syscall.SecurityAttributes{InheritHandle: 1}
+	nonInheritableSecurityAttributes = &syscall.SecurityAttributes{InheritHandle: 0}
 )
 
 // jobObjectBasicLimitInformation mirrors JOBOBJECT_BASIC_LIMIT_INFORMATION
@@ -180,6 +180,9 @@ func startPiProcess(_ context.Context, piPath string, args []string, env []strin
 		return nil, codeError(ErrPiRuntimeRequired.Code, "failed to resume the pi process", callErr)
 	}
 
+	// The thread is now running; the handle is no longer needed.
+	syscall.CloseHandle(pi.Thread)
+
 	// The child owns its own copies of the stdio ends it was given; the
 	// parent closes its redundant copies so the read ends see EOF when the
 	// child exits. The parent keeps stdinWrite (to send commands),
@@ -219,11 +222,13 @@ type windowsPiProcess struct {
 	closedCh chan struct{}
 	readDone chan struct{}
 
-	stderrMu sync.Mutex
+	stderrMu  sync.Mutex
 	stderrBuf *bytes.Buffer
 
-	exitMu  sync.Mutex
+	exitMu   sync.Mutex
 	exitCode int
+
+	closeOnce sync.Once
 }
 
 // waitLoop waits for the process to exit and closes Done.
@@ -255,9 +260,13 @@ func (p *windowsPiProcess) stderrDrain() {
 	}
 }
 
-// readLoop decodes Pi's stdout into Events until the stream ends.
+// readLoop decodes Pi's stdout into Events until the stream ends, then
+// closes the channel so a blocked receiver is guaranteed to wake: the run
+// loop treats the closed channel as the authoritative "process is gone"
+// signal, so no in-flight event is lost to a Done/last-event race.
 func (p *windowsPiProcess) readLoop() {
 	defer close(p.readDone)
+	defer close(p.stdoutCh)
 	reader := &jsonlReader{h: p.stdoutRead}
 	for {
 		line, err := reader.readLine()
@@ -319,28 +328,27 @@ func (p *windowsPiProcess) CapturedStderr() string {
 	return p.stderrBuf.String()
 }
 
-// Close aborts and releases every resource. It is idempotent and safe to
-// call on every exit path (deferred by the run loop).
+// Close aborts and releases every resource: kills the job, waits for the
+// process and the reader goroutine to drain, then closes all handles. It
+// is idempotent (closeOnce) and safe to call on every exit path.
 func (p *windowsPiProcess) Close() {
-	select {
-	case <-p.closedCh:
-		// already closed
-	default:
+	p.closeOnce.Do(func() {
 		close(p.closedCh)
-	}
-	terminateJobObject(p.job)
-	select {
-	case <-p.doneCh:
-	case <-time.After(terminationGracePeriod):
-	}
-	select {
-	case <-p.readDone:
-	case <-time.After(terminationGracePeriod):
-	}
-	syscall.CloseHandle(p.stdinWrite)
-	syscall.CloseHandle(p.stdoutRead)
-	syscall.CloseHandle(p.stderrRead)
-	closeJob(p.job)
+		terminateJobObject(p.job)
+		select {
+		case <-p.doneCh:
+		case <-time.After(terminationGracePeriod):
+		}
+		select {
+		case <-p.readDone:
+		case <-time.After(terminationGracePeriod):
+		}
+		syscall.CloseHandle(p.stdinWrite)
+		syscall.CloseHandle(p.stdoutRead)
+		syscall.CloseHandle(p.stderrRead)
+		syscall.CloseHandle(p.pi)
+		closeJob(p.job)
+	})
 }
 
 // send writes a raw command line to Pi's stdin.
@@ -470,10 +478,10 @@ func startSuspendedProcess(workDir, cmdLine string, stdin, stdout, stderr syscal
 	}
 
 	si := &syscall.StartupInfo{
-		Flags:    syscall.STARTF_USESTDHANDLES,
-		StdInput: stdin,
+		Flags:     syscall.STARTF_USESTDHANDLES,
+		StdInput:  stdin,
 		StdOutput: stdout,
-		StdErr:   stderr,
+		StdErr:    stderr,
 	}
 	si.Cb = uint32(unsafe.Sizeof(*si))
 

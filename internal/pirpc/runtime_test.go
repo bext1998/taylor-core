@@ -78,7 +78,7 @@ func TestDecodeRPCEvent(t *testing.T) {
 			ok: true,
 		},
 		{
-			name: "toolcall_start carries id and tool name",
+			name: "toolcall_start carries id and tool name (top-level per protocol)",
 			line: `{"type":"message_update","assistantMessageEvent":{"type":"toolcall_start","id":"call_1","toolName":"read_file"}}`,
 			want: Event{
 				Type:          "message_update",
@@ -89,8 +89,8 @@ func TestDecodeRPCEvent(t *testing.T) {
 			ok: true,
 		},
 		{
-			name: "toolcall_end carries id and tool name",
-			line: `{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","id":"call_1","toolName":"read_file"}}`,
+			name: "toolcall_end carries the completed call nested in toolCall",
+			line: `{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","toolCall":{"id":"call_1","name":"read_file","arguments":{"path":"a.txt"}}}}`,
 			want: Event{
 				Type:          "message_update",
 				AssistantType: "toolcall_end",
@@ -146,6 +146,30 @@ func TestDecodeRPCEvent(t *testing.T) {
 			name: "agent_settled is the completion signal",
 			line: `{"type":"agent_settled"}`,
 			want: Event{Type: "agent_settled"},
+			ok:   true,
+		},
+		{
+			name: "message_end carries stopReason",
+			line: `{"type":"message_end","message":{"role":"assistant","stopReason":"stop"}}`,
+			want: Event{Type: "message_end", StopReason: "stop"},
+			ok:   true,
+		},
+		{
+			name: "message_end carries error stopReason and message",
+			line: `{"type":"message_end","message":{"role":"assistant","stopReason":"error","errorMessage":"rate limit exceeded"}}`,
+			want: Event{Type: "message_end", StopReason: "error", ErrorMsg: "rate limit exceeded"},
+			ok:   true,
+		},
+		{
+			name: "message_end with no message is surfaced empty",
+			line: `{"type":"message_end"}`,
+			want: Event{Type: "message_end"},
+			ok:   true,
+		},
+		{
+			name: "turn_start is surfaced",
+			line: `{"type":"turn_start"}`,
+			want: Event{Type: "turn_start"},
 			ok:   true,
 		},
 		{

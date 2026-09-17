@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-// piProcess is the platform handle to one running `pi --mode rpc`
+// PiProcess is the platform handle to one running `pi --mode rpc`
 // subprocess. The cross-platform run loop that drives it lives in
 // internal/agent; this package owns the handle and the RPC wire protocol,
-// so piProcess is the only place that speaks Pi's protocol. The Windows
+// so this package is the only place that speaks Pi's protocol. The Windows
 // implementation lives in launch_windows.go; the non-Windows fallback is
 // launch_nonwindows.go.
 type PiProcess interface {
@@ -48,9 +48,9 @@ type Event struct {
 
 	// Response is set when Type == "response": the command ack Pi sends
 	// for an RPC command, with Success and the Command it acked.
-	Response  bool
-	Success   bool
-	Command   string
+	Response bool
+	Success  bool
+	Command  string
 
 	// Usage is the cumulative provider usage carried by a message_update.
 	Usage *Usage
@@ -75,6 +75,15 @@ type Event struct {
 
 	// WillRetry is set by an agent_end that will retry the run.
 	WillRetry bool
+
+	// StopReason is the assistant message's stopReason on a message_end
+	// ("stop", "length", "toolUse", "error", "aborted"). agent_settled only
+	// means Pi will not continue automatically; the run's outcome comes
+	// from this field.
+	StopReason string
+	// ErrorMsg is the error text Pi carries on a failed assistant message
+	// (message_end) when it provides one.
+	ErrorMsg string
 }
 
 // Usage mirrors Pi's cumulative provider-reported usage object on a
@@ -90,26 +99,26 @@ type Usage struct {
 // wireEvent is the raw JSON shape decoded from one RPC line. Fields are
 // tagged to the exact names Pi emits; unknown fields are ignored.
 type wireEvent struct {
-	Type       string         `json:"type"`
-	Success    bool           `json:"success"`
-	Command    string         `json:"command"`
-	Usage      *piUsage       `json:"usage"`
+	Type       string          `json:"type"`
+	Success    bool            `json:"success"`
+	Command    string          `json:"command"`
+	Usage      *piUsage        `json:"usage"`
 	Assistant  json.RawMessage `json:"assistantMessageEvent"`
-	ToolCallID string         `json:"toolCallId"`
-	ToolName   string         `json:"toolName"`
-	WillRetry  *bool          `json:"willRetry"`
-	IsError    *bool          `json:"isError"`
-	Msg        string         `json:"message"`
+	Message    json.RawMessage `json:"message"`
+	ToolCallID string          `json:"toolCallId"`
+	ToolName   string          `json:"toolName"`
+	WillRetry  *bool           `json:"willRetry"`
+	IsError    *bool           `json:"isError"`
 }
 
 // piUsage mirrors Pi's nested usage object.
 type piUsage struct {
-	Input    float64 `json:"input"`
-	Output   float64 `json:"output"`
-	CacheRead float64 `json:"cacheRead"`
+	Input      float64 `json:"input"`
+	Output     float64 `json:"output"`
+	CacheRead  float64 `json:"cacheRead"`
 	CacheWrite float64 `json:"cacheWrite"`
-	Total    float64 `json:"totalTokens"`
-	Cost     *piCost `json:"cost"`
+	Total      float64 `json:"totalTokens"`
+	Cost       *piCost `json:"cost"`
 }
 
 // piCost mirrors Pi's usage.cost object.
@@ -140,14 +149,24 @@ func decodeRPCEvent(line []byte) (Event, bool) {
 		return Event{Type: "session"}, false
 	case "response":
 		return Event{Type: "response", Response: true, Success: w.Success, Command: w.Command}, true
+	case "message_end":
+		// message_end carries the final assistant message for one turn, including
+		// stopReason ("stop", "length", "toolUse", "error", "aborted"). It is
+		// authoritative for the run outcome; agent_settled only confirms that no
+		// further automatic continuation is pending.
+		stopReason, errMsg := decodeAssistantMessageFields(w.Message)
+		return Event{Type: "message_end", StopReason: stopReason, ErrorMsg: errMsg}, true
+	case "turn_start":
+		// One turn = one assistant response plus any resulting tool calls/results.
+		return Event{Type: "turn_start"}, true
 	case "message_update":
 		return Event{
-			Type:      "message_update",
-			Usage:     toDecodedUsage(w.Usage),
+			Type:          "message_update",
+			Usage:         toDecodedUsage(w.Usage),
 			AssistantType: decodeAssistantType(w.Assistant),
-			CallID:    decodeCallID(w.Assistant),
-			ToolName:  decodeToolName(w.Assistant),
-			DeltaText: decodeDelta(w.Assistant),
+			CallID:        decodeCallID(w.Assistant),
+			ToolName:      decodeToolName(w.Assistant),
+			DeltaText:     decodeDelta(w.Assistant),
 		}, true
 	case "tool_execution_start":
 		return Event{
@@ -171,10 +190,34 @@ func decodeRPCEvent(line []byte) (Event, bool) {
 		// The run loop's completion signal: Pi finished its final run.
 		return Event{Type: "agent_settled"}, true
 	default:
-		// queue_update, compaction_start/end, turn_start/turn_end, etc.
-		// are not displayed by #9; skip them.
+		// queue_update, compaction_start/end, turn_end, bash_execution_update,
+		// extension_ui_request, etc. are not surfaced by #9; skip them.
 		return Event{}, false
 	}
+}
+
+// decodeAssistantMessageFields extracts stopReason and errorMessage from
+// the AgentMessage object carried by message_end (and turn_end). Pi's
+// AssistantMessage always carries stopReason ("stop", "length", "toolUse",
+// "error", "aborted"); the error text field is best-effort - different Pi
+// versions may name it errorMessage or error.
+func decodeAssistantMessageFields(raw json.RawMessage) (stopReason, errMsg string) {
+	if len(raw) == 0 {
+		return "", ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return "", ""
+	}
+	if sr, ok := m["stopReason"].(string); ok {
+		stopReason = sr
+	}
+	if em, ok := m["errorMessage"].(string); ok {
+		errMsg = em
+	} else if em, ok := m["error"].(string); ok {
+		errMsg = em
+	}
+	return stopReason, errMsg
 }
 
 // decodeAssistantEvent extracts the assistantMessageEvent payload as a
@@ -218,10 +261,12 @@ func decodeCallID(raw json.RawMessage) string {
 	if m == nil {
 		return ""
 	}
-	if id, ok := m["id"].(string); ok {
+	// toolcall_start carries the id top-level; toolcall_end carries the
+	// completed call nested in toolCall.
+	if id, ok := m["id"].(string); ok && id != "" {
 		return id
 	}
-	return ""
+	return toolCallField(m, "id")
 }
 
 func decodeToolName(raw json.RawMessage) string {
@@ -229,8 +274,25 @@ func decodeToolName(raw json.RawMessage) string {
 	if m == nil {
 		return ""
 	}
-	if tn, ok := m["toolName"].(string); ok {
+	// toolcall_start carries toolName top-level; the nested toolCall object
+	// (toolcall_end) names the field "name".
+	if tn, ok := m["toolName"].(string); ok && tn != "" {
 		return tn
+	}
+	return toolCallField(m, "name")
+}
+
+// toolCallField reads a field from the nested toolCall object of a
+// toolcall_end assistantMessageEvent. Per Pi's RPC protocol the completed
+// call is {id, name, arguments}; the top-level toolName form only appears
+// on toolcall_start.
+func toolCallField(m map[string]any, key string) string {
+	tc, ok := m["toolCall"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if v, ok := tc[key].(string); ok {
+		return v
 	}
 	return ""
 }
@@ -342,7 +404,7 @@ func mergeEnv(base []string, add map[string]string) []string {
 			}
 		}
 		if !replaced {
-			out = append(out, k + "=" + v)
+			out = append(out, k+"="+v)
 		}
 	}
 	return out

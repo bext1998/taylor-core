@@ -47,7 +47,7 @@ func TestStartPiProcessLifecycle(t *testing.T) {
 
 	var deltas []string
 	settled := false
-	for i := 0; i < 2 && !settled; i++ {
+	for !settled {
 		select {
 		case ev := <-proc.Events():
 			switch ev.Type {
@@ -63,9 +63,6 @@ func TestStartPiProcessLifecycle(t *testing.T) {
 			t.Fatalf("timed out waiting for events; stderr=%q", proc.CapturedStderr())
 		}
 	}
-	if !settled {
-		t.Fatal("did not receive agent_settled")
-	}
 	if len(deltas) != 1 || deltas[0] != "hello from fake pi" {
 		t.Fatalf("delta = %v, want [hello from fake pi]", deltas)
 	}
@@ -77,6 +74,28 @@ func TestStartPiProcessLifecycle(t *testing.T) {
 	}
 	if code := proc.ExitCode(); code != 0 {
 		t.Fatalf("ExitCode() = %d, want 0", code)
+	}
+}
+
+// TestCloseIsIdempotent covers the review finding that the Windows handle
+// leaked its process/thread handles and that Close was not idempotent. It
+// starts a real subprocess, then calls Close twice: the second call must be
+// a no-op (no panic / double-handle-close), and the process must be gone.
+func TestCloseIsIdempotent(t *testing.T) {
+	piPath := buildFakePi(t)
+
+	proc, err := startPiProcess(context.Background(), piPath, []string{"--mode", "rpc"}, nil, ".")
+	if err != nil {
+		t.Fatalf("startPiProcess() error = %v", err)
+	}
+
+	proc.Close()
+	proc.Close() // must not panic or double-close handles
+
+	select {
+	case <-proc.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("process did not exit after Close")
 	}
 }
 

@@ -3,9 +3,10 @@
 //
 // It mirrors Pi's JSONL wire protocol closely enough to exercise the
 // Windows subprocess handle: it reads the initial prompt command from
-// stdin and replies with a session header, a success command ack, one
-// assistant message_update carrying usage, and an agent_settled settle
-// event, then exits with status 0.
+// stdin, replies with a session header, a success command ack, one
+// turn (turn_start, assistant message_update with usage, message_end
+// stopReason=stop), and an agent_settled settle event, then exits with
+// status 0.
 //
 // This source lives under testdata, so it is excluded from
 // `go build ./...`, `go vet ./...`, and the INV-9 AST bash guard.
@@ -25,7 +26,8 @@ func main() {
 	emit(map[string]any{"type": "session", "session_id": "fake"})
 	// Command ack: the run loop treats the first success response as the ack.
 	emit(map[string]any{"type": "response", "success": true, "command": "prompt"})
-	// One assistant text delta carrying cumulative usage.
+	// One turn with a single assistant message carrying cumulative usage.
+	emit(map[string]any{"type": "turn_start"})
 	emit(map[string]any{
 		"type": "message_update",
 		"usage": map[string]any{
@@ -34,9 +36,14 @@ func main() {
 			"totalTokens": 30.0,
 		},
 		"assistantMessageEvent": map[string]any{
-			"type": "text_delta",
+			"type":  "text_delta",
 			"delta": "hello from fake pi",
 		},
+	})
+	// Authoritative end of the assistant message: clean stop.
+	emit(map[string]any{
+		"type":    "message_end",
+		"message": map[string]any{"role": "assistant", "stopReason": "stop"},
 	})
 	// Settle: the run loop's completion signal.
 	emit(map[string]any{"type": "agent_settled"})
