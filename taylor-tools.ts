@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { agentsMDText, createAgentsMDSentTracker } from "./agents-md-delivery.ts";
+import type { AgentsMDContext } from "./agents-md-delivery.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -10,11 +12,6 @@ const execFileAsync = promisify(execFile);
 // to ~6x). Keep this well above that worst case; the real fix is a stable
 // Go-side response/size cap, tracked with the other internal/tools follow-ups.
 const maxResponseBytes = 64 * 1024 * 1024;
-
-type AgentsMDContext = {
-  source: string;
-  content: string;
-};
 
 type ToolResponse = {
   tool: string;
@@ -91,13 +88,9 @@ async function invokeTool(name: string, params: Record<string, unknown>, signal:
   }
 }
 
-function agentsMDText(md: AgentsMDContext): string {
-  return (
-    `---Workspace agent instructions (AGENTS.md) — applies to: ${md.source}---\n` +
-    md.content +
-    `\n---end of AGENTS.md---`
-  );
-}
+// Per-session: this module lives for exactly one Pi subprocess, and Brunel
+// launches one subprocess per session (ADR-002).
+const agentsMDTracker = createAgentsMDSentTracker();
 
 function executeTool(name: string) {
   return async (_toolCallId: string, params: Record<string, unknown>, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
@@ -105,7 +98,10 @@ function executeTool(name: string) {
     const content: { type: "text"; text: string }[] = [
       { type: "text", text: JSON.stringify(response.result, null, 2) },
     ];
-    if (response.agents_md) {
+    // Issue #47: the rule itself still arrives with the first successful call
+    // that touches the directory, but it is attached once per session instead
+    // of on every such call.
+    if (response.agents_md && agentsMDTracker.shouldSend(response.agents_md)) {
       content.push({ type: "text", text: agentsMDText(response.agents_md) });
     }
     return {

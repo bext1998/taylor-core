@@ -2,6 +2,9 @@
   "name": "brunel-taylor-tools",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "0.85.1"
   },
