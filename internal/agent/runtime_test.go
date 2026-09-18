@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -491,19 +492,38 @@ func TestRunAbortsOnContextCancel(t *testing.T) {
 	}
 }
 
-// TestBuildInitialPrompt covers issue #9 §4's prompt folding.
+// TestBuildInitialPrompt covers issue #9 §4's prompt folding and the issue #47
+// probe hint.
 func TestBuildInitialPrompt(t *testing.T) {
-	t.Run("no AGENTS.md returns the task unchanged", func(t *testing.T) {
+	t.Run("no AGENTS.md returns the task plus the probe hint", func(t *testing.T) {
 		got := buildInitialPrompt("do work", "")
-		if got != "do work" {
-			t.Fatalf("buildInitialPrompt(empty) = %q, want %q", got, "do work")
+		want := "do work\n\n" + nearAgentsMDProbeGuidance
+		if got != want {
+			t.Fatalf("buildInitialPrompt(empty) = %q, want %q", got, want)
 		}
 	})
 
-	t.Run("folds a trimmed AGENTS.md", func(t *testing.T) {
+	t.Run("folds a trimmed AGENTS.md after the probe hint", func(t *testing.T) {
 		got := buildInitialPrompt("do work", "  instructions\n")
-		if got != "do work\n\n---Workspace agent instructions (AGENTS.md)---\ninstructions\n---end of AGENTS.md---" {
-			t.Fatalf("buildInitialPrompt = %q", got)
+		want := "do work\n\n" + nearAgentsMDProbeGuidance +
+			"\n\n---Workspace agent instructions (AGENTS.md)---\ninstructions\n---end of AGENTS.md---"
+		if got != want {
+			t.Fatalf("buildInitialPrompt = %q, want %q", got, want)
+		}
+	})
+
+	// Issue #47: the hint must name the tool the model has to reach for and
+	// the directory it is probing; a gutted sentence would pass the
+	// exact-string subtests above while guiding nobody.
+	t.Run("probe hint names list_files and the directory rules", func(t *testing.T) {
+		for _, want := range []string{"list_files", "AGENTS.md", "directory"} {
+			if !strings.Contains(nearAgentsMDProbeGuidance, want) {
+				t.Errorf("nearAgentsMDProbeGuidance missing %q: %q", want, nearAgentsMDProbeGuidance)
+			}
+		}
+		// One line, appended to the task: no extra section heading.
+		if strings.Contains(nearAgentsMDProbeGuidance, "---") {
+			t.Errorf("nearAgentsMDProbeGuidance introduces a section: %q", nearAgentsMDProbeGuidance)
 		}
 	})
 }

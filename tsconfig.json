@@ -3,7 +3,16 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
-    "noEmit": true
+    "noEmit": true,
+    // The extension and its test import each other's .ts paths explicitly:
+    // Node's type stripping and Pi's jiti loader both resolve them without an
+    // extension-rewriting build step.
+    "allowImportingTsExtensions": true
   },
-  "include": ["taylor-tools.ts"]
+  "include": [
+    "taylor-tools.ts",
+    "taylor-tools.test.ts",
+    "agents-md-delivery.ts",
+    "agents-md-delivery.test.ts"
+  ]
 }

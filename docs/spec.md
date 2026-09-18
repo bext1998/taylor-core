@@ -1,10 +1,10 @@
 # Brunel Alpha 1 Specification
 
-**版本**：v1.3.1
+**版本**：v1.3.2
 
 **狀態**：Approved
 
-**日期**：2026-09-08
+**日期**：2026-09-18
 
 **適用對象**：實作工程師、AI 代理（Claude Code / Codex）、規格審查者
 
@@ -306,7 +306,7 @@ Context 必須保留使用者指令、目前目標、使用者決策、適用的
 
 ### 7.3 AGENTS.md
 
-啟動時讀 workspace root；操作子目錄檔案前按需讀取更接近的 `AGENTS.md`，較近者優先。AGENTS.md 只能約束工作方式，不能批准工具、改變安全分類或繞過工具前置條件。
+啟動時注入 workspace root 的 AGENTS.md；子目錄規則於首次觸及該目錄的成功工具結果送達，自該次之後對同目錄的後續操作生效，首次操作不受此層規則約束。AGENTS.md 只能約束工作方式，不能批准工具、改變安全分類或繞過工具前置條件。
 
 ### 7.4 設定與憑證
 
@@ -424,7 +424,7 @@ Report 以 UTF-8 JSON 寫入 workspace 內既存父目錄，採暫存檔後原�
 | AC-2 | 互動 TUI | TTY 啟動、輸入任務、resize、串流、取消 | 四個必要區域可用；無 orphan process | E2E + 人工 |
 | AC-3 | 純文字模式 | pipe 執行單次 task 與 `--report` | 不進 alternate screen；輸出與 JSON 完整 | E2E |
 | AC-4 | Provider 與憑證 | Credential Manager key、模型清單與 probe | 只用 tool-capable model；key 不落專案檔 | Integration |
-| AC-5 | AGENTS.md | root／子目錄各放規則後操作子檔 | 就近規則生效且不能授權工具 | Integration |
+| AC-5 | AGENTS.md | root／子目錄各放規則後操作子檔 | 首次操作後、同目錄後續操作時就近規則生效，且不得授權工具 | Integration |
 | AC-6 | 8 工具閉環 | 搜尋→讀取→patch→test→diff | 全部成功且 diff 正確 | E2E |
 | AC-7 | stale-write | 讀取後外部改檔再寫入 | 穩定錯誤；檔案未覆寫 | Integration |
 | AC-8 | path escape | junction、symlink、絕對路徑逃逸 | 三者皆無副作用地拒絕 | Integration |
@@ -513,6 +513,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 | OQ-8（ADR-002） | Pi 版本如何釘選／升級，避免 Issue #24 Gate 1/2/3/4 證據隨版本更新失效 | 升級 Pi 版本前需重跑對應 Gate 的等價測試，不得假設行為不變 |
 | OQ-9（ADR-002） | Gate 0（未安裝 Git Bash 的乾淨環境驗證）由誰、何時補測 | 視為 Alpha 1 發布前的待確認事項；`internal/pirpc` 與 taylor-tools.ts 可先在有 Git Bash 的機器上開發，不阻塞其餘實作 |
 | OQ-10 | 檔案寫入的 sub-millisecond rename 競態：外部程序在 `internal/filetools` 鎖內重驗 hash 與原子換檔之間以 rename 蓋掉目標檔，會被靜默覆寫（OS 的 byte-range lock 不擋 rename，POSIX flock 為 advisory） | Alpha 1 接受為 best-effort：併發寫入者僅為外部人為編輯，Brunel 內部無併發 writer；命中後果為單次未提交編輯遺失、非損毀、非累積、git 可救。Alpha 3「單一 writer」時重評——屆時若 Brunel 內部出現併發 writer，需加 path-keyed 序列化 |
+| OQ-11（Issue #47） | 就近 AGENTS.md 送達後，若 Pi context 被 compaction 擠出，`taylor-tools.ts` 的 per-session 已送集合仍視為已送，不會補送；該 session 內該規則等同永久遺失 | Alpha 1 接受此殘餘落差：`internal/pirpc` 現況不轉譯 `compaction_start`/`compaction_end` event（#9 範圍外），`taylor-tools.ts` 也無此訊號可用於觸發補送。比照 F-10 原裁決立場——AGENTS.md 是 context-only 規則，Go 端授權結果（gate、分類、hash 前置條件）不讀取此規則，因此不構成 AC-5「不能授權工具」的安全不變式缺口。但規則遺失仍可能改變模型在已授權範圍內選擇的動作（例如遺失資料處理或工作方式限制），此模型行為風險不因「不影響 Go 端授權」而消失，不阻塞 Alpha 1 發布但需明確揭露。日後若要修，需先讓 Pi RPC 曝露 compaction 事件給 taylor-tools.ts，屬另開 issue 的範圍 |
 
 未裁決問題不得由實作者自行升級成正式需求。
 
@@ -532,7 +533,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 
 | 版本 | 日期 | 修改內容 | 作者 |
 |---|---|---|---|
-| v1.3.1 | 2026-09-08 | §10 INV-6 標註為 best-effort 並說明殘餘 rename 競態（對齊 #5／PR #26 的實作：`expected_hash` + 鎖內重驗 + 暫存檔原子換檔）；新增 §16 OQ-10 記錄該競態的 Alpha 1 裁決（接受為 best-effort，Alpha 3「單一 writer」時重評）。僅文件對齊實作，行為與其他契約無變更。 | 使用者裁決 + Claude |
+| v1.3.2 | 2026-09-18 | 依 Issue #47 裁決（DECISIONS.md 2026-09-18 條目，方向 1）改寫 §7.3 為「root 於啟動注入、子目錄規則於首次觸及該目錄的成功工具結果送達，自該次起對同目錄後續操作生效，首次操作不受此層約束」；AC-5 通過標準同步改寫為「首次操作後、同目錄後續操作時就近規則生效，且不得授權工具」；新增 §16 OQ-11 記錄 context compaction 可能擠掉已送達規則、per-session 已送集合不會補送的殘餘落差，接受為 Alpha 1 已知限制。僅文件對齊 PR #46 之後的實作（`agents-md-delivery.ts`／`taylor-tools.ts` per-session 去重），AC-5 安全不變式本身未變更。 | 使用者裁決 + Claude |
 | v1.3 | 2026-08-12 | 依 [ADR-002](adr/ADR-002-pi-agent-runtime.md) 正式修訂：G-1 放棄零依賴單檔 exe；§5 架構改為 Go Host + Pi RPC（`internal/pirpc`），8 個工具維持 Go 實作經 Taylor extension 暴露；§5.3 Provider 委派給 Pi，不再限定 OpenRouter，不再 FROZEN；新增 INV-9（`bash` command 禁止清單）；§7.1 Session 註記 Pi 自身 session 停用；§9 CT-6、§13 TC-PROV→TC-PIRPC、§14、§16 OQ-8／OQ-9 同步更新。§6（安全與事故防護）維持不變，僅註記 Pi 不繞過安全決策入口。 | 使用者裁決 + Claude（wayfinder 三題定案：8 工具全留 Go、session 以 Brunel 為準、provider 開放多家） |
 | v1.2 | 2026-07-14 | 將安全定位收斂為事故防護與 AUTO／CONFIRM；加入 Go 1.25 + Bubble Tea v2 薄型 TUI；CompletionReport 改記客觀事實；benchmark runner 移回 Alpha 4；合併重複工程契約為單一來源。 | Codex + 使用者裁決 |
 | v1.1 | 2026-07-13 | 補入工程契約、需求矩陣與測試計畫。 | Codex |

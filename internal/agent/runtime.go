@@ -462,9 +462,21 @@ func readWorkspaceAGENTSmd(workspaceRoot string) (string, error) {
 	return string(data), nil
 }
 
+// nearAgentsMDProbeGuidance is the issue #47 mitigation for the timing gap
+// recorded in DECISIONS.md (2026-09-18): a subdirectory's nearest AGENTS.md
+// reaches the model in the tool result that first touches that directory, so a
+// first call that writes there runs before the model has seen the rules. The
+// Go side attaches a directory's AGENTS.md to every tool result that touches
+// it, list_files included (issue #11), so pointing the model at list_files
+// gives it a way to pull the rules in before the first mutating call. It is
+// one line appended to the task, not a new prompt section.
+const nearAgentsMDProbeGuidance = "Before you first change files or run commands in a directory whose own AGENTS.md you have not seen, list that directory with list_files first: the result carries the rules that apply there."
+
 // buildInitialPrompt folds the workspace AGENTS.md into the initial prompt
-// message Pi receives. Without AGENTS.md the message is just the task.
+// message Pi receives. The probe hint is always present, because nested
+// AGENTS.md files apply whether or not the workspace root has one.
 func buildInitialPrompt(task, agentFile string) string {
+	task += "\n\n" + nearAgentsMDProbeGuidance
 	trimmed := strings.TrimSpace(agentFile)
 	if trimmed == "" {
 		return task
