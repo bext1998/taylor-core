@@ -4,6 +4,18 @@
 
 ## 決策紀錄
 
+### 2026-09-18 — Issue #47：接受「操作後送達」為 F-10 就近 AGENTS.md 的 Alpha 1 語意
+
+**決策**：Issue #47 三個候選方向中採**方向 1**——把現行「就近 AGENTS.md 附在觸及該目錄的第一個成功工具結果」裁決為 Alpha 1 可接受的 F-10 語意，不採方向 2（新 RPC context 注入指令）、不採方向 3（兩段式工具呼叫、延後 I/O）。後續需要：（a）改寫 `docs/spec.md` §7.3 為兩句——root AGENTS.md 於啟動注入，子目錄規則於首次觸及該目錄的成功工具結果送達、自該次之後生效，首次操作不受此層約束；（b）AC-5 驗收方式同步改寫為「首次操作後、同目錄後續操作時就近規則生效，且不得授權工具」；（c）`taylor-tools.ts` 加 per-session 已送集合，讓「一次送達」成為實作保證而非每次重送；（d）root prompt 補一句低成本緩解：進入未知規則的目錄時先 `list_files` 探勘；（e）以下邊界案例記入 spec 或 Open Questions 追蹤——首次操作若為 `write_file`/`create_file`/`apply_patch` 屬不可逆寫入、規則事後才到擋不住已發生的寫入；`run_powershell` 只按 cwd 查規則，指令內部再 cd 時目標目錄的規則不會送達；AGENTS.md 為 symlink 時被靜默略過（1f80b19），模型無從得知「此處有規則但被略過」；工具呼叫失敗時規則不送達，模型修正後重試仍未見規則。方向 2（Pi RPC context 注入通道）視為未來可另開 issue 向 Pi 協定提案的獨立項目，不卡在 F-10 驗收前提。
+
+**原因**：透過 herdr 讓 Claude、Codex（gpt-5.6-sol）、Pi（deepseek-v4.1）三個 agent 各自讀過 `cmd/brunel/main.go` 的 `nearAgentsMD`、`taylor-tools.ts` 注入點與 `docs/spec.md` §7.3／AC-5 後獨立提出建議，結論收斂為：agents_md 只在 `Registry.Call` 成功後才產生、只讀、只餵進 response（`cmd/brunel/main.go` 約 183-202 行），全程走 `Workspace.Resolve` + `Lstat`，不進 gate、分類或 hash guard，因此現況**沒有違反 AC-5「不能授權工具」的安全不變式**，落差只在「就近規則生效」的時序讀法與 spec §7.3 字面「操作前」不符。方向 3 會改變已 `[FROZEN]` 的工具契約語意（一次呼叫不再等於一次操作），牽動 §9 前置條件與 AC-6 八工具閉環；且因規則是 context-only、不改變 Go 端授權結果，「先拿到規則再執行」不會讓任何原本會通過的操作變成被擋，只換到延遲與重試/pending 狀態管理的複雜度，安全收益是假的。方向 2 的完成綁在 Brunel 控制不了的上游 Pi 協定升級（版本相容、handshake），不該當作 F-10 驗收前提。Codex 的意見（傾向方向 3，若不承擔成本則退回方向 1）與 Pi 的意見（直接主張方向 1）在「不違反 AC-5 安全不變式」上一致，僅在是否值得為時序字面吻合付出 FROZEN 契約變更成本上分歧；本決策採 Pi 論證中「context-only 規則不影響 Go 端授權」這一點作為裁決依據。
+
+**影響範圍**：`docs/spec.md` §7.3、AC-5（文字修訂為後續 PR，本決策僅記錄裁決方向，尚未落地）；`taylor-tools.ts`（per-session 已送集合，尚未落地）；GitHub Issue [#47](https://github.com/bext1998/taylor-core/issues/47)（裁決依據，已留言摘要）、Issue #11（相關）、PR #46（原始實作與已知限制的說明來源）。若日後推動方向 2，需另開新 Issue 向 Pi 協定提案。
+
+**狀態**：確認
+
+---
+
 ### 2026-09-08 — 接受檔案寫入的殘餘 rename 競態為 Alpha 1 best-effort
 
 **決策**：#5（PR #26，`internal/filetools`）的 stale-read 防護採「`expected_hash` 前置條件 + 鎖內重驗 hash + 暫存檔原子換檔」。此設計無法完全消除「外部程序在鎖內重驗與換檔之間以 rename 蓋掉目標檔」的 sub-millisecond 競態（OS byte-range lock 不擋 rename、POSIX flock 為 advisory）。Alpha 1 接受此殘餘競態為 best-effort，不再投入完整修法。`docs/spec.md` §10 INV-6 標註為 best-effort，新增 §16 OQ-10，規格提升為 v1.3.1。
