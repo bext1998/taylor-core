@@ -1,4 +1,4 @@
-# Taylor-core 代號：Brunel
+# Taylor Core 代號：Brunel
 
 Brunel 是一個面向 Windows x64 的實驗性 coding harness，用來驗證：當模型具備足夠的自主推理與工具使用能力時，harness 是否能聚焦於工具、邊界、透明度與完成證據，而不需要強制固定工作流。
 
