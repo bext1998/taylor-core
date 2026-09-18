@@ -1,10 +1,10 @@
 # Brunel Alpha 1 Specification
 
-**版本**：v1.3.2
+**版本**：v1.3.3
 
 **狀態**：Approved
 
-**日期**：2026-09-18
+**日期**：2026-09-19
 
 **適用對象**：實作工程師、AI 代理（Claude Code / Codex）、規格審查者
 
@@ -515,6 +515,9 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 | OQ-10 | 檔案寫入的 sub-millisecond rename 競態：外部程序在 `internal/filetools` 鎖內重驗 hash 與原子換檔之間以 rename 蓋掉目標檔，會被靜默覆寫（OS 的 byte-range lock 不擋 rename，POSIX flock 為 advisory） | Alpha 1 接受為 best-effort：併發寫入者僅為外部人為編輯，Brunel 內部無併發 writer；命中後果為單次未提交編輯遺失、非損毀、非累積、git 可救。Alpha 3「單一 writer」時重評——屆時若 Brunel 內部出現併發 writer，需加 path-keyed 序列化 |
 | OQ-11（Issue #47） | 就近 AGENTS.md 送達後，若 Pi context 被 compaction 擠出，`taylor-tools.ts` 的 per-session 已送集合仍視為已送，不會補送；該 session 內該規則等同永久遺失 | Alpha 1 接受此殘餘落差：`internal/pirpc` 現況不轉譯 `compaction_start`/`compaction_end` event（#9 範圍外），`taylor-tools.ts` 也無此訊號可用於觸發補送。比照 F-10 原裁決立場——AGENTS.md 是 context-only 規則，Go 端授權結果（gate、分類、hash 前置條件）不讀取此規則，因此不構成 AC-5「不能授權工具」的安全不變式缺口。但規則遺失仍可能改變模型在已授權範圍內選擇的動作（例如遺失資料處理或工作方式限制），此模型行為風險不因「不影響 Go 端授權」而消失，不阻塞 Alpha 1 發布但需明確揭露。日後若要修，需先讓 Pi RPC 曝露 compaction 事件給 taylor-tools.ts，屬另開 issue 的範圍 |
 
+| OQ-12（Issue #8） | Pi 自行探索、Brunel 從未持有的 provider key 若被 Pi 回顯於錯誤訊息，`internal/pirpc` 目前只能做啟發式遮罩；公開錯誤訊息保證不含 secret 的最終責任邊界（Brunel 遮罩義務的範圍、Pi 自身是否也需負責）尚未定義 | Alpha 1 維持現有啟發式遮罩，不阻塞其餘 #8 範圍關閉；正式責任邊界待裁決，裁決前不得視為已解決 |
+| OQ-13（Issue #11） | 就近 AGENTS.md 送達機制的 4 個邊界案例尚未有明確行為承諾：(a) 首次操作若為 `write_file`／`create_file`／`apply_patch` 屬不可逆寫入，規則事後才送達擋不住已發生的寫入；(b) `run_powershell` 只按呼叫時的 cwd 查規則，指令內部再 `cd` 時目標目錄的規則不會送達；(c) `AGENTS.md` 為 symlink 時被靜默略過（`1f80b19`），模型無從得知「此處有規則但被略過」；(d) 工具呼叫失敗時規則不送達，模型修正後重試仍可能未見規則 | Alpha 1 接受現況為已知限制，不逐一修復；四項皆為 context-only 規則的傳遞完整性問題，不構成 AC-5「不能授權工具」的安全不變式缺口。是否需要為任一項補上明確緩解，留待日後裁決 |
+
 未裁決問題不得由實作者自行升級成正式需求。
 
 ---
@@ -533,6 +536,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 
 | 版本 | 日期 | 修改內容 | 作者 |
 |---|---|---|---|
+| v1.3.3 | 2026-09-19 | Issue #1 issue 治理清理的一部分：新增 §16 OQ-12（Issue #8 provider key 遮罩責任邊界未定義）、OQ-13（Issue #11 就近 AGENTS.md 送達機制 4 個邊界案例，原記於 DECISIONS.md 2026-09-18 條目但未提升為 spec OQ）。純文件記錄既有已知限制，不變更任何行為或驗收標準。 | 使用者裁決 + Claude |
 | v1.3.2 | 2026-09-18 | 依 Issue #47 裁決（DECISIONS.md 2026-09-18 條目，方向 1）改寫 §7.3 為「root 於啟動注入、子目錄規則於首次觸及該目錄的成功工具結果送達，自該次起對同目錄後續操作生效，首次操作不受此層約束」；AC-5 通過標準同步改寫為「首次操作後、同目錄後續操作時就近規則生效，且不得授權工具」；新增 §16 OQ-11 記錄 context compaction 可能擠掉已送達規則、per-session 已送集合不會補送的殘餘落差，接受為 Alpha 1 已知限制。僅文件對齊 PR #46 之後的實作（`agents-md-delivery.ts`／`taylor-tools.ts` per-session 去重），AC-5 安全不變式本身未變更。 | 使用者裁決 + Claude |
 | v1.3 | 2026-08-12 | 依 [ADR-002](adr/ADR-002-pi-agent-runtime.md) 正式修訂：G-1 放棄零依賴單檔 exe；§5 架構改為 Go Host + Pi RPC（`internal/pirpc`），8 個工具維持 Go 實作經 Taylor extension 暴露；§5.3 Provider 委派給 Pi，不再限定 OpenRouter，不再 FROZEN；新增 INV-9（`bash` command 禁止清單）；§7.1 Session 註記 Pi 自身 session 停用；§9 CT-6、§13 TC-PROV→TC-PIRPC、§14、§16 OQ-8／OQ-9 同步更新。§6（安全與事故防護）維持不變，僅註記 Pi 不繞過安全決策入口。 | 使用者裁決 + Claude（wayfinder 三題定案：8 工具全留 Go、session 以 Brunel 為準、provider 開放多家） |
 | v1.2 | 2026-07-14 | 將安全定位收斂為事故防護與 AUTO／CONFIRM；加入 Go 1.25 + Bubble Tea v2 薄型 TUI；CompletionReport 改記客觀事實；benchmark runner 移回 Alpha 4；合併重複工程契約為單一來源。 | Codex + 使用者裁決 |
