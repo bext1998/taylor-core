@@ -4,6 +4,18 @@
 
 ## 決策紀錄
 
+### 2026-09-18 — Issue #47：修正去重 key 裁決，改用「per-source 最後送達內容」
+
+**決策**：推翻同日稍早的第 3 項裁決（見下一則）。`agentsMDKey` 的「目錄＋內容」設計改為 `Map<source, lastContent>`：`shouldSend` 判斷「當前內容是否與該來源上次送達的內容不同」，不同才送並更新記錄。不再沿用原本的 `Set<目錄＋內容>` 永久記錄法。
+
+**原因**：PR #48 的 Codex 合併前審查抓到一個原裁決沒發現的回歸情境——規則內容依序為 A → B → A（編輯後又改回原內容）時，`Set<目錄＋內容>` 因為 A 的 key 在第一次送達時就已加入集合，第三次的 A 會被誤判為「已送過」而壓掉，模型最後留在 context 裡的其實是已經過期的 B。這與原裁決第 3 點宣稱的「規則一改就會重送最新版本，不會讓模型用過期規則工作」直接矛盾——原裁決只驗證了 A → B 這一種變化方向，沒有覆蓋「改回舊版本」的情境。改用 `Map<source, lastContent>` 後，判斷依據是「與上次送達的內容是否不同」而非「這個確切的內容組合是否出現過」，A → B → A 三次都會正確送達。已補上對應回歸測試（`agents-md-delivery.test.ts`），8/8 測試通過。
+
+**影響範圍**：`agents-md-delivery.ts`（`createAgentsMDSentTracker` 內部從 Set 改 Map，commit 1cb2b30）；`agents-md-delivery.test.ts`（新增 A→B→A 回歸測試）；`docs/spec.md` OQ-11 文字同步收窄（不影響 Go 端授權，但可能改變模型在已授權範圍內的行為選擇，不只是「規則遵循品質問題」）；GitHub PR [#48](https://github.com/bext1998/taylor-core/pull/48)、Issue [#47](https://github.com/bext1998/taylor-core/issues/47)。
+
+**狀態**：確認
+
+---
+
 ### 2026-09-18 — Issue #47：收尾三項後續事項（spec 文字、compaction 落差、去重 key 設計）
 
 **決策**：延續同日稍早「方向 1」裁決（見下一則），收尾當時列出的三項未決事項：
