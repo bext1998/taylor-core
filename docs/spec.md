@@ -513,7 +513,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 | OQ-8（ADR-002） | Pi 版本如何釘選／升級，避免 Issue #24 Gate 1/2/3/4 證據隨版本更新失效 | 升級 Pi 版本前需重跑對應 Gate 的等價測試，不得假設行為不變 |
 | OQ-9（ADR-002） | Gate 0（未安裝 Git Bash 的乾淨環境驗證）由誰、何時補測 | 視為 Alpha 1 發布前的待確認事項；`internal/pirpc` 與 taylor-tools.ts 可先在有 Git Bash 的機器上開發，不阻塞其餘實作 |
 | OQ-10 | 檔案寫入的 sub-millisecond rename 競態：外部程序在 `internal/filetools` 鎖內重驗 hash 與原子換檔之間以 rename 蓋掉目標檔，會被靜默覆寫（OS 的 byte-range lock 不擋 rename，POSIX flock 為 advisory） | Alpha 1 接受為 best-effort：併發寫入者僅為外部人為編輯，Brunel 內部無併發 writer；命中後果為單次未提交編輯遺失、非損毀、非累積、git 可救。Alpha 3「單一 writer」時重評——屆時若 Brunel 內部出現併發 writer，需加 path-keyed 序列化 |
-| OQ-11（Issue #47） | 就近 AGENTS.md 送達後，若 Pi context 被 compaction 擠出，`taylor-tools.ts` 的 per-session 已送集合仍視為已送，不會補送；該 session 內該規則等同永久遺失 | Alpha 1 接受此殘餘落差：`internal/pirpc` 現況不轉譯 `compaction_start`/`compaction_end` event（#9 範圍外），`taylor-tools.ts` 也無此訊號可用於觸發補送。比照 F-10 原裁決立場——AGENTS.md 是 context-only 規則，不影響 Go 端授權結果，此落差是規則遵循品質問題、不是 AC-5 安全不變式缺口，不阻塞 Alpha 1 發布。日後若要修，需先讓 Pi RPC 曝露 compaction 事件給 taylor-tools.ts，屬另開 issue 的範圍 |
+| OQ-11（Issue #47） | 就近 AGENTS.md 送達後，若 Pi context 被 compaction 擠出，`taylor-tools.ts` 的 per-session 已送集合仍視為已送，不會補送；該 session 內該規則等同永久遺失 | Alpha 1 接受此殘餘落差：`internal/pirpc` 現況不轉譯 `compaction_start`/`compaction_end` event（#9 範圍外），`taylor-tools.ts` 也無此訊號可用於觸發補送。比照 F-10 原裁決立場——AGENTS.md 是 context-only 規則，Go 端授權結果（gate、分類、hash 前置條件）不讀取此規則，因此不構成 AC-5「不能授權工具」的安全不變式缺口。但規則遺失仍可能改變模型在已授權範圍內選擇的動作（例如遺失資料處理或工作方式限制），此模型行為風險不因「不影響 Go 端授權」而消失，不阻塞 Alpha 1 發布但需明確揭露。日後若要修，需先讓 Pi RPC 曝露 compaction 事件給 taylor-tools.ts，屬另開 issue 的範圍 |
 
 未裁決問題不得由實作者自行升級成正式需求。
 

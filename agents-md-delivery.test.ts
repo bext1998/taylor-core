@@ -40,6 +40,18 @@ test("re-sends a rule that changed mid-session instead of pinning a stale copy",
   assert.equal(tracker.shouldSend(rule("services/api", "run gofmt\nrun lint\n")), false);
 });
 
+test("re-sends a rule that reverts to an earlier version, not just a new one", () => {
+  const tracker = createAgentsMDSentTracker();
+  assert.equal(tracker.shouldSend(rule("services/api", "run gofmt\n")), true);
+  assert.equal(tracker.shouldSend(rule("services/api", "run gofmt\nrun lint\n")), true);
+  // Content reverted to the first version the model was ever shown: the
+  // model's last known copy is still the second version, so this must
+  // deliver again rather than being suppressed because that exact
+  // source+content pair was already sent once before.
+  assert.equal(tracker.shouldSend(rule("services/api", "run gofmt\n")), true);
+  assert.equal(tracker.shouldSend(rule("services/api", "run gofmt\n")), false);
+});
+
 test("trackers do not share state, so a new session delivers again", () => {
   const first = createAgentsMDSentTracker();
   const second = createAgentsMDSentTracker();

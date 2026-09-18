@@ -21,22 +21,28 @@ export function agentsMDKey(md: AgentsMDContext): string {
 }
 
 export type AgentsMDSentTracker = {
-  // True at most once per distinct rule. Records the delivery, so callers must
-  // call it only when they are about to attach the rule to the tool result.
+  // True whenever the content for this source differs from what was last
+  // delivered for it (including the first time). Records the delivery, so
+  // callers must call it only when they are about to attach the rule to the
+  // tool result.
   shouldSend(md: AgentsMDContext): boolean;
 };
 
 // One instance per Pi subprocess. Brunel launches `pi --mode rpc --no-session`
 // per session (ADR-002), so a process-wide instance is session-wide.
+//
+// Tracks the last content delivered per source, not every content ever seen:
+// a Set keyed by agentsMDKey would permanently suppress a rule whose content
+// returns to an earlier value (edited A -> B -> A), leaving the model pinned
+// to the stale B it was last shown even though the file is back to A.
 export function createAgentsMDSentTracker(): AgentsMDSentTracker {
-  const sent = new Set<string>();
+  const lastSent = new Map<string, string>();
   return {
     shouldSend(md: AgentsMDContext): boolean {
-      const key = agentsMDKey(md);
-      if (sent.has(key)) {
+      if (lastSent.get(md.source) === md.content) {
         return false;
       }
-      sent.add(key);
+      lastSent.set(md.source, md.content);
       return true;
     },
   };
