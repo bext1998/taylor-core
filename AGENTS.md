@@ -17,6 +17,8 @@ Brunel 是一個面向 Windows x64 的薄型 coding harness 實驗，重點是�
 5. Git commit 或 push 前遵循 `maze-github-safe-ops` 的 pre-commit 與 pre-push 檢查清單。
 6. 後續變更使用功能分支與 Pull Request；不得直接推送 `main`。
 7. Git Worktrees 請集中放置於 `D:\AgentCoding\.codex\worktrees\Brunel`；建立 Git Worktree 時的分支名稱一律採用 `maze/YYYY-MM-DD-short-hash`，其中 `short-hash` 為隨機值，字尾不得再加任何字樣。
+8. Issue 是否算完成、是否應關閉屬治理判斷：所有 AC、QA、適用 CI、文件與 PR 合併皆完備才視為完成；證據不足以唯一判定時，停下來詢問使用者，不以自創標記或非規範狀態掩蓋不確定性。純機械、可回溯且有明確證據的驗收條件判斷（例如某條 AC 能否依既有證據打勾）可直接執行並附上證據，不需逐次詢問。
+9. 驗證或其他殘留事項需要獨立追蹤時，主動詢問使用者是否另開新 Issue（作為「不確定時怎麼辦」的選項之一），不自行決定開或不開。
 
 ## 當前狀態與下一步
 
@@ -41,3 +43,4 @@ Brunel 是一個面向 Windows x64 的薄型 coding harness 實驗，重點是�
 - 不得自行修改 `docs/spec.md` 的功能範圍或任何 `[FROZEN]` 契約。
 - 不得將 token、API key、密碼或其他憑證寫入 repository。
 - 不得把待確認假設或 Open Questions 當作已裁決決策。
+- 不得自創無規範依據的狀態或標記（例如在 Issue 標題塞「[核心已合併]」）來表達完成／未完成；狀態一律使用既有欄位、既有標籤，或經使用者確認的機制表達。
