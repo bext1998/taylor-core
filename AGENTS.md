@@ -13,12 +13,12 @@ Brunel 是一個面向 Windows x64 的薄型 coding harness 實驗，重點是�
 1. 先閱讀 `MAZE_PROJECT.md` 取得規格與關鍵文件的實際路徑。
 2. 只實作任務要求的功能，不添加額外功能或任務外重構。
 3. 修改前閱讀相關實作、型別、測試、文件、呼叫者與資料流。
-4. 每次 session 結束前同步 `STATUS.md` 與 `NEXT_ACTION.md`。
-5. Git commit 或 push 前遵循 `maze-github-safe-ops` 的 pre-commit 與 pre-push 檢查清單。
+4. PR 的 review 全部完成（合併或確定關閉）後，若專案狀態或下一步有變動，再同步 `STATUS.md` 與 `NEXT_ACTION.md`；不因 session 結束或 PR 仍在審查中而改寫。
+5. Git commit 或 push 前，若可使用 `maze-github-safe-ops`，遵循其 pre-commit 與 pre-push 檢查清單；否則至少檢查目標 branch、remote、Git status、staged diff、敏感資料、未同步變更、相關 Issue 與適用的 QA／CI。
 6. 後續變更使用功能分支與 Pull Request；不得直接推送 `main`。
 7. Git Worktrees 請集中放置於 `D:\AgentCoding\.codex\worktrees\Brunel`；建立 Git Worktree 時的分支名稱一律採用 `maze/YYYY-MM-DD-short-hash`，其中 `short-hash` 為隨機值，字尾不得再加任何字樣。
-8. Issue 是否算完成、是否應關閉屬治理判斷：所有 AC、QA、適用 CI、文件與 PR 合併皆完備才視為完成；證據不足以唯一判定時，停下來詢問使用者，不以自創標記或非規範狀態掩蓋不確定性。純機械、可回溯且有明確證據的驗收條件判斷（例如某條 AC 能否依既有證據打勾）可直接執行並附上證據，不需逐次詢問。
-9. 驗證或其他殘留事項需要獨立追蹤時，主動詢問使用者是否另開新 Issue（作為「不確定時怎麼辦」的選項之一），不自行決定開或不開。
+8. Issue 是否算完成、是否應關閉屬治理判斷：所有 AC、QA、適用 CI、文件與 PR 合併皆完備才視為完成；證據不足以唯一判定時，先完成不依賴該判斷的工作，再就完成或關閉決策詢問使用者，不以自創標記或非規範狀態掩蓋不確定性。純機械、可回溯且有明確證據的驗收條件判斷（例如某條 AC 能否依既有證據打勾）可直接執行並附上證據，不需逐次詢問。
+9. 驗證或其他殘留事項需要獨立追蹤，且沒有既有 Issue 涵蓋時，完成不依賴該決策的工作後，詢問使用者是否另開新 Issue；不自行決定開或不開。
 
 ## 當前狀態與下一步
 
