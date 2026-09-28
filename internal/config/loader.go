@@ -75,15 +75,21 @@ func (l *Loader) Load(ctx context.Context, overrides CLIOverrides) (Resolved, er
 	if credentials == nil {
 		credentials = NewPlatformCredentialSource()
 	}
+	// The OpenRouter key is optional here (see ErrCredentialNotFound): a
+	// missing key resolves to an empty OpenRouterAPIKey, and the caller
+	// decides whether the provider it launches needs one.
 	key, err := credentials.OpenRouterAPIKey(ctx)
 	if err != nil {
+		if errors.Is(err, ErrCredentialNotFound) {
+			return Resolved{Config: config}, nil
+		}
 		if errors.Is(err, ErrUnsupportedPlatform) {
 			return Resolved{}, configError(ErrUnsupportedPlatform.Code, "credential-manager", err)
 		}
 		return Resolved{}, configError(ErrConfigCredential.Code, "credential-manager", errors.New("OpenRouter credential unavailable"))
 	}
 	if strings.TrimSpace(key) == "" {
-		return Resolved{}, configError(ErrConfigCredential.Code, "credential-manager", errors.New("OpenRouter credential is empty"))
+		return Resolved{Config: config}, nil
 	}
 	return Resolved{Config: config, apiKey: key}, nil
 }

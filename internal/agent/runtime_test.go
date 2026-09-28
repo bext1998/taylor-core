@@ -690,3 +690,33 @@ func TestUsageDiffers(t *testing.T) {
 		t.Fatal("cost appeared vs no cost must differ")
 	}
 }
+
+// TestSetExtraEnvReachesLaunch checks that SetExtraEnv entries (the
+// approval channel, issue #2) are passed to the pi launch, and that they
+// cannot override the BRUNEL_EXE / BRUNEL_MODE values Run sets itself.
+func TestSetExtraEnvReachesLaunch(t *testing.T) {
+	events := []pirpc.Event{
+		{Type: "response", Response: true, Success: true, Command: "prompt"},
+		{Type: "message_end", StopReason: "stop"},
+		{Type: "agent_settled"},
+	}
+	var got map[string]string
+	r := NewRuntime(pirpc.LaunchOptions{Model: "openrouter/x"}, pirpc.Credential{}, newTestSession(t), t.TempDir(), "readonly", `C:\brunel.exe`)
+	r.start = func(_ context.Context, _ pirpc.LaunchOptions, _ pirpc.Credential, _ string, env map[string]string) (pirpc.PiProcess, error) {
+		got = env
+		return newFake(events, nil), nil
+	}
+	r.SetExtraEnv(map[string]string{
+		"BRUNEL_APPROVAL_PIPE": `\\.\pipe\x`,
+		"BRUNEL_MODE":          "workspace",
+	})
+	if _, err := r.Run(context.Background(), "task", &recordingSink{}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if got["BRUNEL_APPROVAL_PIPE"] != `\\.\pipe\x` {
+		t.Fatalf("extra env not passed to launch: %#v", got)
+	}
+	if got["BRUNEL_MODE"] != "readonly" || got["BRUNEL_EXE"] != `C:\brunel.exe` {
+		t.Fatalf("extra env overrode Run's own entries: %#v", got)
+	}
+}

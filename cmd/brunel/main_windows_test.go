@@ -13,6 +13,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bext1998/brunel/internal/approval"
+	brunelexec "github.com/bext1998/brunel/internal/exec"
+	"github.com/bext1998/brunel/internal/safety"
 )
 
 func TestTaylorToolAcceptsExactlyFrozenNames(t *testing.T) {
@@ -182,5 +186,60 @@ func assertTaylorFile(t *testing.T, path, want string) {
 	}
 	if string(actual) != want {
 		t.Fatalf("content of %s = %q, want %q", path, actual, want)
+	}
+}
+
+type answeringApprover struct {
+	answer  bool
+	prompts []safety.ApprovalPrompt
+}
+
+func (a *answeringApprover) Confirm(_ context.Context, p safety.ApprovalPrompt) (bool, error) {
+	a.prompts = append(a.prompts, p)
+	return a.answer, nil
+}
+
+// TestTaylorToolConfirmUsesHostApprovalChannel drives the real --taylor-tool
+// path against a real approval broker (issue #2): the subprocess Gate asks
+// the host through the named pipe, a denial has no side effect, and an
+// approval lets the command run once.
+func TestTaylorToolConfirmUsesHostApprovalChannel(t *testing.T) {
+	for _, approve := range []bool{false, true} {
+		root := t.TempDir()
+		path := filepath.Join(root, "sentinel.txt")
+		if err := os.WriteFile(path, []byte("present\n"), 0o600); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+		host := &answeringApprover{answer: approve}
+		broker, err := approval.StartBroker(context.Background(), host)
+		if err != nil {
+			t.Fatalf("StartBroker: %v", err)
+		}
+		for k, v := range broker.Env() {
+			t.Setenv(k, v)
+		}
+
+		response, exitCode := invokeTaylorTool(t, root, "workspace", "run_powershell", `{"command":"Remove-Item .\\sentinel.txt -Recurse"}`)
+		_ = broker.Close()
+
+		if len(host.prompts) != 1 || !strings.Contains(host.prompts[0].Command, "Remove-Item") || host.prompts[0].Reason == "" {
+			t.Fatalf("approve=%v: host saw %#v, want one prompt with command and reason", approve, host.prompts)
+		}
+		if !approve {
+			if exitCode == 0 || response.ErrorCode != safety.ErrApprovalDenied.Code {
+				t.Fatalf("denied: response = %#v, exit=%d", response, exitCode)
+			}
+			assertTaylorFile(t, path, "present\n")
+			continue
+		}
+		if response.ErrorCode == brunelexec.ErrPwshRequired.Code {
+			t.Skip("pwsh 7 is not installed")
+		}
+		if exitCode != 0 || response.Status != "ok" {
+			t.Fatalf("approved: response = %#v, exit=%d", response, exitCode)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("approved command did not run: stat err = %v", err)
+		}
 	}
 }
