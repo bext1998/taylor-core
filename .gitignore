@@ -12,6 +12,9 @@ build/
 coverage/
 coverage.*
 
+# Node.js dependencies
+node_modules/
+
 # Local configuration and secrets
 .env
 .env.*
