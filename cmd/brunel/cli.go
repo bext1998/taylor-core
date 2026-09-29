@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/bext1998/brunel/internal/agent"
 	"github.com/bext1998/brunel/internal/approval"
@@ -341,7 +342,7 @@ func runPlain(opts cliOptions, setup *runSetup, env cliEnv) int {
 	ctx, stop := env.signalContext()
 	defer stop()
 
-	sink := newPlainSink(env.stdout, env.stderr)
+	sink := newPlainSink(env.stdout, env.stderr, env.tty.stdout)
 	// A TTY on stdin means a human can answer approval prompts (spec.md
 	// §5.2); without one no approver exists and CONFIRM fails closed with
 	// E_APPROVAL_REQUIRED_NO_TTY (§6.3).
@@ -380,8 +381,21 @@ func runPlain(opts cliOptions, setup *runSetup, env cliEnv) int {
 	if ctx.Err() != nil {
 		status = session.ExitStatusAborted
 	}
-	if err := setup.session.Close(status); err != nil {
-		reportError(env.stderr, err)
+	return closeSession(setup.session, status, code, env.stderr)
+}
+
+// sessionCloser is the part of *session.Session the exit path needs.
+type sessionCloser interface {
+	Close(status string) error
+}
+
+// closeSession finalizes the session and folds a failure into the exit
+// code: if the session metadata could not be written or cleaned up, the
+// caller must not see a success status (the recovery evidence is unreliable).
+func closeSession(s sessionCloser, status string, code int, stderr io.Writer) int {
+	if err := s.Close(status); err != nil {
+		reportError(stderr, err)
+		return exitFailed
 	}
 	return code
 }
@@ -393,11 +407,17 @@ func runInteractive(setup *runSetup, env cliEnv) int {
 	defer cancel()
 
 	var broker approvalBroker
+	// lastRunCancelled records whether the most recent run was cancelled
+	// (Ctrl+C). Quitting after a cancelled run must keep the session as
+	// aborted recovery evidence, like plain-text mode does.
+	var lastRunCancelled atomic.Bool
 	opts := tui.Options{
 		Model: setup.model,
 		Mode:  setup.mode,
 		Run: func(runCtx context.Context, task string, sink agent.EventSink) (*completion.Report, error) {
-			return setup.agent.Run(runCtx, task, sink)
+			rep, err := setup.agent.Run(runCtx, task, sink)
+			lastRunCancelled.Store(runCtx.Err() != nil)
+			return rep, err
 		},
 	}
 	err := env.runTUI(opts, func(sink agent.EventSink, approver safety.Approver) {
@@ -419,10 +439,11 @@ func runInteractive(setup *runSetup, env cliEnv) int {
 		code = exitFailed
 		reportError(env.stderr, codedError{"E_RUNTIME_ERROR", "tui: " + err.Error()})
 	}
-	if err := setup.session.Close(session.ExitStatusClean); err != nil {
-		reportError(env.stderr, err)
+	status := session.ExitStatusClean
+	if lastRunCancelled.Load() {
+		status = session.ExitStatusAborted
 	}
-	return code
+	return closeSession(setup.session, status, code, env.stderr)
 }
 
 // codedError is a CLI-level error with a stable code.

@@ -178,6 +178,8 @@ var (
 	keyApprove = key.NewBinding(key.WithKeys("y", "Y"))
 	keyDeny    = key.NewBinding(key.WithKeys("n", "N", "esc"))
 	keyScroll  = key.NewBinding(key.WithKeys("pgup", "pgdown", "ctrl+home", "ctrl+end"))
+	// keyModalScroll scrolls a tall approval; the modal owns the keyboard.
+	keyModalScroll = key.NewBinding(key.WithKeys("up", "down", "pgup", "pgdown", "home", "end"))
 )
 
 type pendingApproval struct {
@@ -202,6 +204,7 @@ type model struct {
 	quitOnDone bool
 
 	approvals []pendingApproval // head is shown; the broker sends one at a time
+	modalOff  int               // first visible line of the head approval's text
 }
 
 func newModel(opts Options, b *bridge) model {
@@ -267,9 +270,16 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// The modal owns the keyboard: only an explicit y approves.
 		switch {
 		case key.Matches(msg, keyApprove):
-			m.answerApproval(true)
+			// A command taller than the modal must be read to the end
+			// before it can be approved (spec.md §6.2: the full command
+			// is shown).
+			if m.modalFullySeen() {
+				m.answerApproval(true)
+			}
 		case key.Matches(msg, keyDeny):
 			m.answerApproval(false)
+		case key.Matches(msg, keyModalScroll):
+			m.scrollModal(msg.String())
 		}
 		return m, nil
 	}
@@ -399,6 +409,7 @@ func (m *model) answerApproval(ok bool) {
 	}
 	head := m.approvals[0]
 	m.approvals = m.approvals[1:]
+	m.modalOff = 0
 	head.reply <- ok // buffered by the approver; never blocks
 	m.layout()
 }
@@ -407,6 +418,9 @@ func (m *model) dropApproval(reply chan<- bool) {
 	for i, p := range m.approvals {
 		if p.reply == reply {
 			m.approvals = append(m.approvals[:i], m.approvals[i+1:]...)
+			if i == 0 {
+				m.modalOff = 0
+			}
 			break
 		}
 	}
@@ -471,18 +485,90 @@ func (m model) modalHeight() int {
 	return lipgloss.Height(m.renderModal())
 }
 
-func (m model) renderModal() string {
+// modalText returns the head approval's reason and command, wrapped to the
+// terminal width. It is never truncated; a tall text is scrolled instead.
+func (m model) modalText() []string {
 	p := m.approvals[0].prompt
 	w := max(m.width, 1)
-	body := strings.Join([]string{
-		styleModalTitle.Render("Approval required"),
-		"Reason:  " + approval.SanitizeForDisplay(p.Reason),
-		"Command: " + approval.SanitizeForDisplay(p.Command),
-		styleModalKeys.Render("[y] approve once   [n] deny"),
+	text := "Reason:  " + approval.SanitizeForDisplay(p.Reason) + "\nCommand: " + approval.SanitizeForDisplay(p.Command)
+	return strings.Split(lipgloss.NewStyle().Width(w).Render(text), "\n")
+}
+
+// modalBodyHeight is how many lines of modalText fit: the transcript and the
+// input keep one line each, and the title and key lines take two.
+func (m model) modalBodyHeight(total int) int {
+	// The title and key lines wrap on a narrow terminal; size them by their
+	// longest forms so the modal never outgrows the screen.
+	w := max(m.width, 1)
+	room := m.height - 1 - 1
+	short := lipgloss.Height(styleModal.Width(w).Render(modalTitleShort)) +
+		lipgloss.Height(styleModal.Width(w).Render(modalKeysShort))
+	if total <= room-short {
+		return total // everything fits; nothing scrolls
+	}
+	long := lipgloss.Height(styleModal.Width(w).Render(modalTitleLong)) +
+		lipgloss.Height(styleModal.Width(w).Render(modalKeysLocked))
+	return max(min(total, room-long), 1)
+}
+
+func (m model) modalMaxOff(total int) int {
+	return max(total-m.modalBodyHeight(total), 0)
+}
+
+// modalFullySeen reports whether the whole approval text is on screen.
+func (m model) modalFullySeen() bool {
+	if len(m.approvals) == 0 {
+		return false
+	}
+	total := len(m.modalText())
+	return min(m.modalOff, m.modalMaxOff(total)) >= m.modalMaxOff(total)
+}
+
+func (m *model) scrollModal(k string) {
+	if len(m.approvals) == 0 {
+		return
+	}
+	total := len(m.modalText())
+	body := m.modalBodyHeight(total)
+	off := m.modalOff
+	switch k {
+	case "up":
+		off--
+	case "down":
+		off++
+	case "pgup":
+		off -= body
+	case "pgdown":
+		off += body
+	case "home":
+		off = 0
+	case "end":
+		off = total
+	}
+	m.modalOff = max(min(off, m.modalMaxOff(total)), 0)
+	m.layout()
+}
+
+func (m model) renderModal() string {
+	lines := m.modalText()
+	total := len(lines)
+	body := m.modalBodyHeight(total)
+	off := max(min(m.modalOff, m.modalMaxOff(total)), 0)
+	title := modalTitleShort
+	keys := modalKeysShort
+	if total > body {
+		title += fmt.Sprintf(" (lines %d-%d of %d, up/down/pgup/pgdn scroll)", off+1, off+body, total)
+		if !m.modalFullySeen() {
+			keys = modalKeysLocked
+		}
+	}
+	w := max(m.width, 1)
+	out := strings.Join([]string{
+		styleModalTitle.Render(title),
+		strings.Join(lines[off:off+body], "\n"),
+		styleModalKeys.Render(keys),
 	}, "\n")
-	// The modal never truncates the command or the reason: it wraps them to
-	// the terminal width so the full text stays visible when narrow.
-	return styleModal.Width(w).Render(body)
+	return styleModal.Width(w).Render(out)
 }
 
 func (m model) renderStatus() string {
@@ -515,6 +601,13 @@ func (m model) View() tea.View {
 	v.AltScreen = true
 	return v
 }
+
+const (
+	modalTitleShort = "Approval required"
+	modalKeysShort  = "[y] approve once   [n] deny"
+	modalTitleLong  = "Approval required (lines 999-999 of 999, up/down/pgup/pgdn scroll)"
+	modalKeysLocked = "[n] deny   (scroll to the end to approve)"
+)
 
 var (
 	styleUser       = lipgloss.NewStyle().Bold(true)

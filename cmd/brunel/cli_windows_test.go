@@ -344,3 +344,22 @@ func TestInvalidWorkspace(t *testing.T) {
 		t.Fatalf("exit = %d stderr = %q", code, h.stderr.String())
 	}
 }
+
+// A run cancelled with Ctrl+C in the TUI must leave the unnamed session as
+// aborted recovery evidence instead of deleting it as a clean exit.
+func TestInteractiveCancelKeepsSession(t *testing.T) {
+	h := newHarness(t, terminals{stdin: true, stdout: true}, "")
+	h.env.runTUI = func(opts tui.Options, bind func(agent.EventSink, safety.Approver)) error {
+		bind(&eventLog{}, &recordingApprover{})
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, _ = opts.Run(ctx, "cancelled task", &eventLog{})
+		return nil
+	}
+	if code := runCLI([]string{"--model", "anthropic/x"}, h.env); code != exitOK {
+		t.Fatalf("exit = %d: %s", code, h.stderr.String())
+	}
+	if n := len(h.sessionDirs(t)); n != 1 {
+		t.Fatalf("%d session dirs after a cancelled TUI run, want the aborted one kept", n)
+	}
+}

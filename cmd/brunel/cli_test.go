@@ -75,7 +75,7 @@ func TestHelpPrintsUsage(t *testing.T) {
 
 func TestPlainSinkSeparatesAnswerFromActivity(t *testing.T) {
 	var out, log bytes.Buffer
-	s := newPlainSink(&out, &log)
+	s := newPlainSink(&out, &log, false)
 	s.Emit(agent.Event{Kind: agent.EventAssistantDelta, Text: "Looking"})
 	s.Emit(agent.Event{Kind: agent.EventToolStarted, ToolName: "read_file"})
 	s.Emit(agent.Event{Kind: agent.EventToolFinished, ToolName: "read_file"})
@@ -145,5 +145,49 @@ func TestRelayApproverEmitsDisplayEventsAndKeepsDecision(t *testing.T) {
 		if len(log.events) != 2 || log.events[0].Kind != agent.EventApprovalNeeded || log.events[1].Kind != agent.EventApprovalResolved {
 			t.Fatalf("relay events = %+v", log.events)
 		}
+	}
+}
+
+func TestPlainSinkNeutralizesTerminalControlOnTTY(t *testing.T) {
+	var out, log bytes.Buffer
+	s := newPlainSink(&out, &log, true)
+	s.Emit(agent.Event{Kind: agent.EventAssistantDelta, Text: "hi\x1b[?1049h\x1b[2J\x1b]0;x\x07\rbye\n"})
+	s.Emit(agent.Event{Kind: agent.EventToolStarted, ToolName: "a\x1b[2Jb"})
+	s.finish()
+	if strings.ContainsAny(out.String()+log.String(), "\x1b\r\x07") {
+		t.Fatalf("control characters reached the terminal: out=%q log=%q", out.String(), log.String())
+	}
+	if !strings.Contains(out.String(), `\x1b[?1049h`) || !strings.HasSuffix(out.String(), "\n") {
+		t.Fatalf("stdout = %q, want visible escapes and the newline kept", out.String())
+	}
+}
+
+func TestPlainSinkKeepsBytesWhenRedirected(t *testing.T) {
+	var out, log bytes.Buffer
+	s := newPlainSink(&out, &log, false)
+	s.Emit(agent.Event{Kind: agent.EventAssistantDelta, Text: "a\x1b[1mb\n"})
+	s.finish()
+	if out.String() != "a\x1b[1mb\n" {
+		t.Fatalf("redirected stdout was altered: %q", out.String())
+	}
+}
+
+type failingCloser struct{ err error }
+
+func (f failingCloser) Close(string) error { return f.err }
+
+func TestCloseSessionFailureIsNotSuccess(t *testing.T) {
+	var stderr bytes.Buffer
+	if code := closeSession(failingCloser{errors.New("disk full")}, "clean", exitOK, &stderr); code != exitFailed {
+		t.Fatalf("exit = %d after a failed session close, want %d", code, exitFailed)
+	}
+	if !strings.Contains(stderr.String(), "disk full") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	if code := closeSession(failingCloser{}, "clean", exitOK, &stderr); code != exitOK {
+		t.Fatalf("exit = %d after a good close", code)
+	}
+	if code := closeSession(failingCloser{}, "clean", exitFailed, &stderr); code != exitFailed {
+		t.Fatalf("a good close must keep the run's own failure code, got %d", code)
 	}
 }

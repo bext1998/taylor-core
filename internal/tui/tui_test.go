@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"go/parser"
 	"go/token"
 	"os"
@@ -361,5 +362,60 @@ func TestModalNeutralizesControlCharacters(t *testing.T) {
 	}
 	if !strings.Contains(view, `\x0d`) || !strings.Contains(view, `\x1b`) {
 		t.Fatalf("modal did not show visible escapes: %q", view)
+	}
+}
+
+func TestLongCommandMustBeReadBeforeApproval(t *testing.T) {
+	m := newModel(Options{}, newTestBridge(&capture{}))
+	var parts []string
+	for i := 0; i < 40; i++ {
+		parts = append(parts, fmt.Sprintf("Write-Host line%02d", i))
+	}
+	command := strings.Join(parts, "\n")
+	reply := make(chan bool, 1)
+	m, _ = update(t, m, tea.WindowSizeMsg{Width: 40, Height: 10})
+	m, _ = update(t, m, approvalRequestMsg{prompt: safety.ApprovalPrompt{Command: command, Reason: "why"}, reply: reply})
+
+	if h := len(strings.Split(m.View().Content, "\n")); h > 10 {
+		t.Fatalf("view is %d lines on a 10-line terminal", h)
+	}
+	seen := map[string]bool{}
+	collect := func() {
+		for _, l := range strings.Split(ansi.Strip(m.View().Content), "\n") {
+			if f := strings.Fields(l); len(f) >= 2 && f[len(f)-2] == "Write-Host" {
+				seen[f[len(f)-1]] = true
+			}
+		}
+	}
+	collect()
+	if seen["line39"] {
+		t.Fatal("test setup: the end of the command is already visible")
+	}
+	m, _ = update(t, m, press("y"))
+	select {
+	case <-reply:
+		t.Fatal("approved a command whose end was never shown")
+	default:
+	}
+	for i := 0; i < 100 && !seen["line39"]; i++ {
+		m, _ = update(t, m, press("pgdown"))
+		collect()
+	}
+	if !seen["line39"] {
+		t.Fatal("could not scroll to the end of the command")
+	}
+	for i := 0; i < 40; i++ {
+		if !seen[fmt.Sprintf("line%02d", i)] {
+			t.Fatalf("line%02d was never shown while scrolling", i)
+		}
+	}
+	m, _ = update(t, m, press("y"))
+	select {
+	case ok := <-reply:
+		if !ok {
+			t.Fatal("y after reading everything did not approve")
+		}
+	default:
+		t.Fatal("y after reading everything did not answer")
 	}
 }

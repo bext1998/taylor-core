@@ -23,10 +23,15 @@ type plainSink struct {
 	mu       sync.Mutex
 	out, log io.Writer
 	midLine  bool // stdout has text without a trailing newline
+	// sanitizeOut makes model text visible-safe on stdout. It is set when
+	// stdout is a terminal: model text with ESC sequences (alternate screen,
+	// clear screen, OSC) would otherwise be executed by the terminal and
+	// could disturb the approval prompt. Redirected output stays byte-exact.
+	sanitizeOut bool
 }
 
-func newPlainSink(out, log io.Writer) *plainSink {
-	return &plainSink{out: out, log: log}
+func newPlainSink(out, log io.Writer, sanitizeOut bool) *plainSink {
+	return &plainSink{out: out, log: log, sanitizeOut: sanitizeOut}
 }
 
 func (s *plainSink) Emit(e agent.Event) {
@@ -37,17 +42,21 @@ func (s *plainSink) Emit(e agent.Event) {
 		if e.Text == "" {
 			return
 		}
-		_, _ = io.WriteString(s.out, e.Text)
+		text := e.Text
+		if s.sanitizeOut {
+			text = approval.SanitizeForDisplay(text)
+		}
+		_, _ = io.WriteString(s.out, text)
 		s.midLine = !strings.HasSuffix(e.Text, "\n")
 	case agent.EventToolStarted:
 		s.endLineLocked()
-		_, _ = fmt.Fprintf(s.log, "[tool] %s started\n", e.ToolName)
+		_, _ = fmt.Fprintf(s.log, "[tool] %s started\n", approval.SanitizeForDisplay(e.ToolName))
 	case agent.EventToolFinished:
-		_, _ = fmt.Fprintf(s.log, "[tool] %s finished\n", e.ToolName)
+		_, _ = fmt.Fprintf(s.log, "[tool] %s finished\n", approval.SanitizeForDisplay(e.ToolName))
 	case agent.EventApprovalResolved:
 		// EventApprovalNeeded is not printed: the TTY approver's prompt
 		// already shows the command and the reason.
-		_, _ = fmt.Fprintf(s.log, "[approval] %s\n", e.Text)
+		_, _ = fmt.Fprintf(s.log, "[approval] %s\n", approval.SanitizeForDisplay(e.Text))
 	case agent.EventRunFinished:
 		s.endLineLocked()
 	}
