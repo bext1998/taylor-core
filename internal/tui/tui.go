@@ -205,6 +205,7 @@ type model struct {
 
 	approvals []pendingApproval // head is shown; the broker sends one at a time
 	modalOff  int               // first visible line of the head approval's text
+	modalSeen int               // lines shown so far without skipping any (exclusive end)
 }
 
 func newModel(opts Options, b *bridge) model {
@@ -409,7 +410,7 @@ func (m *model) answerApproval(ok bool) {
 	}
 	head := m.approvals[0]
 	m.approvals = m.approvals[1:]
-	m.modalOff = 0
+	m.modalOff, m.modalSeen = 0, 0
 	head.reply <- ok // buffered by the approver; never blocks
 	m.layout()
 }
@@ -419,7 +420,7 @@ func (m *model) dropApproval(reply chan<- bool) {
 		if p.reply == reply {
 			m.approvals = append(m.approvals[:i], m.approvals[i+1:]...)
 			if i == 0 {
-				m.modalOff = 0
+				m.modalOff, m.modalSeen = 0, 0
 			}
 			break
 		}
@@ -515,13 +516,17 @@ func (m model) modalMaxOff(total int) int {
 	return max(total-m.modalBodyHeight(total), 0)
 }
 
-// modalFullySeen reports whether the whole approval text is on screen.
+// modalFullySeen reports whether every line of the approval text has been
+// on screen. Jumping (End, Home) does not count for the lines it skips: the
+// seen range only grows through windows that touch it, so the middle of a
+// long command cannot be bypassed.
 func (m model) modalFullySeen() bool {
 	if len(m.approvals) == 0 {
 		return false
 	}
 	total := len(m.modalText())
-	return min(m.modalOff, m.modalMaxOff(total)) >= m.modalMaxOff(total)
+	seen := max(m.modalSeen, m.modalBodyHeight(total)) // the first page is shown on open
+	return seen >= total
 }
 
 func (m *model) scrollModal(k string) {
@@ -546,6 +551,10 @@ func (m *model) scrollModal(k string) {
 		off = total
 	}
 	m.modalOff = max(min(off, m.modalMaxOff(total)), 0)
+	seen := max(m.modalSeen, body)
+	if m.modalOff <= seen { // contiguous with what was already shown
+		m.modalSeen = max(seen, m.modalOff+body)
+	}
 	m.layout()
 }
 

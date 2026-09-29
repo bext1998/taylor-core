@@ -419,3 +419,36 @@ func TestLongCommandMustBeReadBeforeApproval(t *testing.T) {
 		t.Fatal("y after reading everything did not answer")
 	}
 }
+
+func TestJumpingToEndDoesNotUnlockApproval(t *testing.T) {
+	m := newModel(Options{}, newTestBridge(&capture{}))
+	var parts []string
+	for i := 0; i < 40; i++ {
+		parts = append(parts, fmt.Sprintf("Write-Host line%02d", i))
+	}
+	reply := make(chan bool, 1)
+	m, _ = update(t, m, tea.WindowSizeMsg{Width: 40, Height: 10})
+	m, _ = update(t, m, approvalRequestMsg{prompt: safety.ApprovalPrompt{Command: strings.Join(parts, "\n"), Reason: "why"}, reply: reply})
+
+	m, _ = update(t, m, press("end"))
+	m, _ = update(t, m, press("y"))
+	select {
+	case <-reply:
+		t.Fatal("End then y approved a command whose middle was never shown")
+	default:
+	}
+	// Reading the skipped middle (paging back up, then down) unlocks it.
+	m, _ = update(t, m, press("home"))
+	for i := 0; i < 100; i++ {
+		m, _ = update(t, m, press("pgdown"))
+	}
+	m, _ = update(t, m, press("y"))
+	select {
+	case ok := <-reply:
+		if !ok {
+			t.Fatal("expected approval after reading every page")
+		}
+	default:
+		t.Fatal("still locked after paging through the whole command")
+	}
+}
