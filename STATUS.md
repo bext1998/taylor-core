@@ -1,6 +1,6 @@
 # Brunel — 當前狀態
 
-> 最後同步：2026-09-17
+> 最後同步：2026-09-29
 > Branch：main
 > Working tree：乾淨（與 `origin/main` 同步）
 
@@ -14,6 +14,7 @@
 ## 進行中 Issues
 
 - [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1) 已依 v1.2 對齊；未完成子項為 #2、#4、#7、#9、#11、#14、#22、#29（#30 已於 PR #36 完成並 CLOSED）。#8、#9 已依 ADR-002／v1.3 重新拆解完成（見「架構轉向」）；#4／#8／#9 核心實作已合併（見下）；#11 核心已合併（F-10 部分實作，見下），時序語意裁決轉由 #47 追蹤。
+- [#2 F-1：CLI、薄型 TUI 與 TTY 契約](https://github.com/bext1998/taylor-core/issues/2) 核心已透過 [PR #56](https://github.com/bext1998/taylor-core/pull/56) 合併至 `main`（merge commit `0c86a4c`，`Related to #2`）：`brunel`（TTY 啟動 TUI）、`brunel "<task>"`（純文字模式）、`--mode`／`--model`／`--name`／`--resume`／`--report`、退出碼 0／1／2（規格未定義數值，本 PR 自訂）；`internal/tui`（可捲動 transcript、多行輸入、狀態列、批准 modal）；`internal/approval`（每次執行專用的 Windows named pipe，把 `--taylor-tool` 子行程 Gate 的 CONFIRM 送回主程式；DACL 僅限目前使用者、拒絕遠端連線、每請求附 token、子行程讀取後移除環境變數、任何通道錯誤皆視為拒絕；見 DECISIONS.md 2026-09-28）；`go.mod` 升至 `go 1.25.0`（Bubble Tea v2.0.9、x/sys v0.47.0、x/term v0.45.0）。經多輪合併前審查修正：批准提示與純文字 TTY 輸出的終端控制字元（`SanitizeForDisplay`）、長命令批准 modal 需捲讀全文才能批准（含 End 跳頁與 resize 繞過）、TUI 取消後保留 aborted session、session 關閉失敗不回成功退出碼。**AC 尚不能打勾**：真實 `pi --mode rpc` 端到端（#49）與實際 TTY 人工操作都未做。已知未處理：子行程被取消後 TUI 上已開的批准 modal 不會自動關閉（無安全影響）；`taylor-tools.ts` 預設從 `brunel.exe` 同目錄載入，部署佈局屬 #43／#49。後續：#52（同一 session 多任務 context）、#53（`--resume` 重建 context）、#54（無 TTY 遇需確認命令時未立即以非零結束 run）、#55（`--report` 的 CT-8 路徑前置條件，銜接 #14）。Issue 關閉待定。
 - [#4 F-3：8 個固定內建工具與凍結 schema](https://github.com/bext1998/brunel/issues/4) 的 `internal/tools` 核心實作已透過 PR #33 合併至 `main`：固定 registry、嚴格 JSON／必填欄位驗證（`DisallowUnknownFields`、拒 `null`／尾隨 JSON、無自動補值）、8 工具的結構化 `Result`，以及每個 I/O 路徑在 workspace resolve、`filetools`、Git 或 PowerShell 前經真實 `safety.Gate.Decide`（INV-1）。新增 `list_files`、`search_text`、Git-only `workspace_diff`；其餘工具接上既有 `filetools`／`exec`。經兩個隔離 Sonnet subagent 審查並修正兩個 major（INV-1 no-bypass 測試補齊 8 工具的 `Registry{Gate:nil}` 反例；`tools.ErrorCode` 串接 `safety`／`workspace`／`filetools`／`exec` 的 `ErrorCode`）。TC-WS／TC-FILE／TC-SAFE 覆蓋與 Windows AC-6 閉環測試通過；CI `windows-latest`＋`ubuntu-latest` 綠。殘留 minor／nit（`workspace_diff` timeout 混碼與漏 staged／untracked、`search_text` 無上限、`max_depth:0` 未文件化、巢狀 null coerce 等）記於 [#4 review 註解](https://github.com/bext1998/brunel/issues/4#issuecomment-5620453317)。`--taylor-tool` 進入點與 `taylor-tools.ts` 已由 PR #37（#29 核心）合併；Pi bridge 已由 PR #40（#9 核心）合併，見下方 #9 條目。
 - [#5 F-4：實作 stale-read hash 防護與原子寫入](https://github.com/bext1998/brunel/issues/5) 核心實作已透過 PR #26 合併至 `main`（`internal/filetools`）：全檔 SHA-256、`create_file`／`write_file`／`apply_patch` 的 `expected_hash` 前置條件、精確 hunk 套用（無自動 merge／模糊比對）、暫存檔＋鎖內重驗＋原子換檔；stale hash、patch conflict、overlap、缺失目標、失敗寫入與鎖衝突皆保留原檔且有界失敗。#4（PR #33）已將它接至 `workspace.Workspace` 與 §5.4 工具呼叫路徑，並經 PR #37 的 `brunel --taylor-tool` 進入點可從子行程呼叫；#9 核心（PR #40）已合併，但真實 `pi --mode rpc` 端到端驗證仍未跑（僅 fakepi 子行程與單元測試）。INV-6 為 best-effort（見 spec §10／OQ-10）。
 - [#7 F-6：實作 AUTO／CONFIRM 事故防護與 Approver](https://github.com/bext1998/brunel/issues/7) 核心實作已透過 PR #27 合併至 `main`（`internal/safety`）：單一安全決策入口 `Gate.Decide`、`Risk`／`ApprovalPrompt`／`Approver`（依 spec.md §5.2／§6.2 FROZEN 定義）、readonly 模式的確定性拒絕（不呼叫 Approver）、無 TTY 時 `E_APPROVAL_REQUIRED_NO_TTY` 快速失敗、`run_powershell` 針對 §6.2 六類代表命令（強制／遞迴刪除、清空內容、大量移動覆寫、git 狀態變更、安裝或更新套件、網路傳輸、背景程序／job、workspace 外絕對路徑）的字串／token 分類。#4（PR #33）已在 8 工具的實際 I/O 前接上 `Gate.Decide`、`filetools`、`workspace` 與 `exec`（INV-1 反例測試已涵蓋 8 工具）；實際 TUI／純文字 Approver 仍屬 #2。best-effort classifier 的漏判／過度確認強化見 [#31](https://github.com/bext1998/brunel/issues/31)。
@@ -25,7 +26,7 @@
 
 - 無規格決策阻塞 Alpha 1 實作。`docs/spec.md` §5／§9 的 Route B 修訂已於 v1.3（`7e9e01e`）完成。
 - #13（完成證據狀態機）與 #15（Smoke Benchmark Runner）已依 v1.2 以 `not planned` 關閉。
-- 可執行前線（無開放阻塞）：**#31**（§6.2 classifier 強化，無硬阻塞、建議發布前完成）。#4／#5／#7／#8／#9／#29 核心與 #30 皆已落地；#2 待 #9（現已解除）；#11 核心已落地（剩時序語意裁決見 #47 與真實 E2E）；#14 待 #9（現已解除，另需裁決 `workspace_diff` 語意 vs `Diff` 欄位——見 [#9 review 交接註解](https://github.com/bext1998/brunel/issues/9#issuecomment-5620455153)）；#22 待多項；#4 F-3 收尾項見 review 註解。
+- 可執行前線（無開放阻塞）：**#31**（§6.2 classifier 強化，無硬阻塞、建議發布前完成）、**#49**（真實 Pi E2E）、**#52**～**#55**（#2 後續）、**#57**（Windows CI 偶發失敗）。#4／#5／#7／#8／#9／#29 核心與 #30 皆已落地；#2 核心已合併（PR #56，AC 待 #49 與人工 TTY 驗證）；#11 核心已落地（剩時序語意裁決見 #47 與真實 E2E）；#14 待 #9（現已解除，另需裁決 `workspace_diff` 語意 vs `Diff` 欄位——見 [#9 review 交接註解](https://github.com/bext1998/brunel/issues/9#issuecomment-5620455153)）；#22 待多項；#4 F-3 收尾項見 review 註解。
 
 ## 等待 Review
 
@@ -37,6 +38,7 @@
 
 ## 已合併待關閉
 
+- #2（F-1 CLI／薄型 TUI／TTY 契約與批准通道，`cmd/brunel`＋`internal/tui`＋`internal/approval`）核心經 [PR #56](https://github.com/bext1998/taylor-core/pull/56) 合併至 `main`；AC 待真實 Pi E2E（#49）與人工 TTY 驗證，Issue 關閉待定。
 - #11（F-10 就近 AGENTS.md，`cmd/brunel`＋`taylor-tools.ts`）核心經 PR #46 合併至 `main`（部分實作，見「進行中 Issues」#11 條目）；時序語意差距由 #47 追蹤，真實 Pi E2E 待 #9 的 E2E 環境就緒，Issue 關閉待定。
 - #4（F-3 8 工具 registry，`internal/tools`）核心經 PR #33 合併至 `main`；Pi bridge 屬 #9、真實 AC-6／AC-9 E2E 待 #9，F-3 收尾 minor 見 review 註解，Issue 關閉待定。
 - #5（F-4 stale-read，`internal/filetools`）核心經 PR #26 合併至 `main`；已由 #4（PR #33）接上工具呼叫路徑、經 PR #37 可從 `--taylor-tool` 子行程呼叫，真實 Pi E2E 待 #9，Issue 關閉待定。
@@ -47,6 +49,8 @@
 
 ## 最近完成
 
+- PR #56（#2 F-1 核心，**Related to #2**）已合併至 `main`（merge commit `0c86a4c`，5 個提交）：見上方 #2 條目。經多輪隔離審查後合併，最後一輪 Windows／Ubuntu CI 皆綠。審查過程中 `d4ba3ce` 的 Windows CI 曾在 `internal/exec` 的 `TestPSRunner_Timeout_KillsProcessTree` 失敗（該目錄未變更，後續提交未重跑即通過），已另開 [#57](https://github.com/bext1998/taylor-core/issues/57) 追蹤。
+- PR #51（忽略 `node_modules/`、加入 `package-lock.json`）由使用者裁決 CLOSED（未合併）：`main` 已有 `package-lock.json`（#45）與 `node_modules/` 忽略規則，該 PR 與 `main` 衝突且會以較舊內容覆蓋；Pi 版本鎖定與本機安裝改由 #43 追蹤。
 - PR #46（#11 F-10 核心，**部分實作**，`Related to #11`）已合併至 `main`（merge commit `9842177`，commits `cee4d92`＋`1f80b19`）：見上方 #11 條目。經 Codex 合併前審查兩輪（symlink blocker 修復＋時序轉 #47）。
 - PR #40（#9 F-8 核心）已合併至 `main`（squash，commit `c620351`）：見上方 #9 條目。
 - PR #36（#30 F-x INV-9，`Closes #30`）已合併至 `main`：`internal/pirpc` 的 `bash` RPC command 禁令從過渡子字串 tripwire 升級為 `go/ast` 靜態檢查（解析字串字面／`+` 串接／同檔 const，`json.Unmarshal` 後查 `type=="bash"`，回報 `file:line`），`TestTCPIRPC001` 正反例，CI 於 `go test` 前執行。#30 已 CLOSED。
@@ -79,8 +83,9 @@
 
 - v1.2 AC-7 的 stale-read 防護（#5）核心邏輯與單元測試已合併（PR #26），並經 #4（PR #33）接上實際 `workspace.Workspace` 與 8 工具呼叫路徑、Windows AC-6 閉環測試通過，`brunel --taylor-tool` 子行程進入點亦已合併（PR #37），Pi RPC 子行程橋接機制本身也已由 PR #40（#9 核心）合併；但真實 `pi --mode rpc` → `--taylor-tool` 這條完整路徑仍只跑過 fakepi，沒有對接真正的 Pi 執行過（AC-7／AC-6 正式判定需待真實 E2E）。
 - INV-6 為 best-effort（spec v1.3.1／OQ-10）：`internal/filetools` 無法完全消除鎖內重驗與原子換檔之間的 sub-millisecond rename 競態；Alpha 1 接受（併發寫入者僅外部人為編輯，Brunel 內部無併發 writer），Alpha 3「單一 writer」時重評。
-- AC-9～AC-11（AUTO 體驗、CONFIRM 分類、readonly／無 TTY）對應的 #7 核心決策邏輯與單元測試已合併（PR #27），#4（PR #33）已完成 `internal/tools` 層的工具接線與 registry 反例測試；正式判定仍待 #2（TUI／純文字 Approver 實作）與真實 Pi 呼叫路徑（#9 核心橋接機制已合併，仍待真實 E2E）後的整合測試。`--taylor-tool` 子行程無 TTY，CONFIRM `run_powershell` 固定回 `E_APPROVAL_REQUIRED_NO_TTY`（PR #37 已註明，批准 UX 實作屬 #2）。§6.2 classifier 的漏判／過度確認強化見 #31。
+- AC-9～AC-11（AUTO 體驗、CONFIRM 分類、readonly／無 TTY）對應的 #7 核心決策邏輯與單元測試已合併（PR #27），#4（PR #33）已完成 `internal/tools` 層的工具接線與 registry 反例測試；TUI／純文字 Approver 與 named pipe 批准通道已由 PR #56（#2）合併；正式判定仍待真實 Pi 呼叫路徑（#9 核心橋接機制已合併，仍待 #49 真實 E2E）與人工 TTY 驗證。無 TTY 時不開批准通道，`--taylor-tool` 子行程的 CONFIRM `run_powershell` 仍回 `E_APPROVAL_REQUIRED_NO_TTY`，但 run 不會立即以非零狀態結束（#54）。§6.2 classifier 的漏判／過度確認強化見 #31。
 - AC-4（Provider 與憑證）對應的 #8 已完成 `internal/pirpc` 的 provider／model 透傳、憑證環境變數注入與錯誤轉譯核心邏輯與單元測試（PR #28），子行程啟動／管理機制已由 PR #40（#9 核心）合併，但仍未經真實 Pi RPC 子行程驗證（僅 fakepi）；`OPENROUTER_API_KEY` 等憑證環境變數命名依 Issue #24 Spike 分支的偵測結果，未對照 Pi 正式文件逐一確認。Pi 自行探索、Brunel 從未持有的 provider key 若被回顯於錯誤訊息，只能做啟發式遮罩；公開錯誤不含 secret 的最終責任邊界待 spec 定義。
 - PR #41（原 STATUS/NEXT_ACTION 同步文件，內容已過期）由使用者主動 CLOSED（未合併），本輪同步取代其內容。
 - `internal/exec` 的 Timeout／MaxProcesses／MaxMemoryBytes／MaxOutputBytes 一律由呼叫端明確提供，套件本身不內建預設值；Alpha 1 不再需要 benchmark 硬性預算。
-- repository 的 `go.mod` 目前仍是 Go 1.22；本次依約不修改程式碼或依賴，後續實作 TUI 前需另行同步至 Go 1.25.x。
+- `go.mod` 已於 PR #56 升至 `go 1.25.0`；新增或升級依賴時須確認其 `go` 指令不高於 1.25（`AGENTS.md` 已載明）。
+- PR #56 的批准通道與 TUI 只有單元／整合測試與 CI 覆蓋；實際 TTY 操作與真實 `pi --mode rpc` 路徑（含批准 modal 經 named pipe 的完整流程）尚未驗證。AC-2（人工部分）、AC-9～AC-11 的正式判定待 #49 與人工 TTY 驗證。
