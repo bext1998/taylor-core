@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bext1998/brunel/internal/agent"
+	"github.com/bext1998/brunel/internal/approval"
 	"github.com/bext1998/brunel/internal/safety"
 )
 
@@ -88,7 +89,7 @@ func newTTYApprover(in io.Reader, out io.Writer) *ttyApprover {
 }
 
 func (a *ttyApprover) Confirm(ctx context.Context, p safety.ApprovalPrompt) (bool, error) {
-	_, _ = fmt.Fprintf(a.out, "\n[approval required] %s\n  command: %s\nApprove this command once? [y/N] ", p.Reason, p.Command)
+	_, _ = fmt.Fprintf(a.out, "\n[approval required] %s\n  command: %s\nApprove this command once? [y/N] ", approval.SanitizeForDisplay(p.Reason), approval.SanitizeForDisplay(p.Command))
 
 	answer := make(chan string, 1)
 	go func() {
@@ -122,11 +123,12 @@ type relayApprover struct {
 }
 
 func (r *relayApprover) Confirm(ctx context.Context, p safety.ApprovalPrompt) (bool, error) {
-	r.sink.Emit(agent.Event{Kind: agent.EventApprovalNeeded, Timestamp: time.Now(), Text: p.Command})
+	shown := approval.SanitizeForDisplay(p.Command)
+	r.sink.Emit(agent.Event{Kind: agent.EventApprovalNeeded, Timestamp: time.Now(), Text: shown})
 	ok, err := r.inner.Confirm(ctx, p)
-	result := "denied: " + p.Command
+	result := "denied: " + shown
 	if err == nil && ok {
-		result = "approved once: " + p.Command
+		result = "approved once: " + shown
 	}
 	r.sink.Emit(agent.Event{Kind: agent.EventApprovalResolved, Timestamp: time.Now(), Text: result})
 	return ok, err

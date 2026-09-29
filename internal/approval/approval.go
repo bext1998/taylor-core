@@ -22,6 +22,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -63,4 +66,29 @@ func randomHex(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf), nil
+}
+
+// SanitizeForDisplay makes model-supplied text safe to show in an approval
+// prompt. The command and reason come from the model, so raw terminal
+// control characters (CR, ESC and the ANSI/OSC sequences they start, other
+// C0/C1 controls) or bidirectional overrides could redraw or reorder the
+// prompt and hide what will actually run. Each such rune is replaced by a
+// visible escape (\xNN or \uNNNN); newline and tab are kept.
+func SanitizeForDisplay(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\n' || r == '\t':
+			b.WriteRune(r)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&b, `\x%02x`, r)
+		case r >= 0x80 && r <= 0x9f, r >= 0x200b && r <= 0x200f, r >= 0x2028 && r <= 0x202e, r >= 0x2066 && r <= 0x2069, r == 0xfeff:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		case r == utf8.RuneError:
+			b.WriteString(`�`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

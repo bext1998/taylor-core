@@ -24,6 +24,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/bext1998/brunel/internal/agent"
+	"github.com/bext1998/brunel/internal/approval"
 	"github.com/bext1998/brunel/internal/completion"
 	"github.com/bext1998/brunel/internal/provider"
 	"github.com/bext1998/brunel/internal/safety"
@@ -475,8 +476,8 @@ func (m model) renderModal() string {
 	w := max(m.width, 1)
 	body := strings.Join([]string{
 		styleModalTitle.Render("Approval required"),
-		"Reason:  " + p.Reason,
-		"Command: " + p.Command,
+		"Reason:  " + approval.SanitizeForDisplay(p.Reason),
+		"Command: " + approval.SanitizeForDisplay(p.Command),
 		styleModalKeys.Render("[y] approve once   [n] deny"),
 	}, "\n")
 	// The modal never truncates the command or the reason: it wraps them to

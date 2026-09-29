@@ -348,3 +348,18 @@ func TestBubbleTeaStaysInPresentation(t *testing.T) {
 		t.Fatal("no core package files were checked")
 	}
 }
+
+func TestModalNeutralizesControlCharacters(t *testing.T) {
+	m := newModel(Options{}, newTestBridge(&capture{}))
+	m, _ = update(t, m, approvalRequestMsg{
+		prompt: safety.ApprovalPrompt{Command: "echo hi\rrm -rf x\x1b[2J", Reason: "why\x1b]0;t\x07"},
+		reply:  make(chan bool, 1),
+	})
+	view := m.renderModal()
+	if strings.ContainsAny(view, "\r\x07") || strings.Contains(view, "\x1b[2J") || strings.Contains(view, "\x1b]0;") {
+		t.Fatalf("modal passed raw control characters through: %q", view)
+	}
+	if !strings.Contains(view, `\x0d`) || !strings.Contains(view, `\x1b`) {
+		t.Fatalf("modal did not show visible escapes: %q", view)
+	}
+}
