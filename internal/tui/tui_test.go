@@ -452,3 +452,46 @@ func TestJumpingToEndDoesNotUnlockApproval(t *testing.T) {
 		t.Fatal("still locked after paging through the whole command")
 	}
 }
+
+func TestResizeVoidsApprovalReadingProgress(t *testing.T) {
+	m := newModel(Options{}, newTestBridge(&capture{}))
+	var parts []string
+	for i := 0; i < 40; i++ {
+		parts = append(parts, fmt.Sprintf("Write-Host line%02d aaaaaaaaaaaaaaaaaaaaaaaa", i))
+	}
+	reply := make(chan bool, 1)
+	m, _ = update(t, m, tea.WindowSizeMsg{Width: 20, Height: 10})
+	m, _ = update(t, m, approvalRequestMsg{prompt: safety.ApprovalPrompt{Command: strings.Join(parts, "\n"), Reason: "why"}, reply: reply})
+	// Read most of it at the narrow width, but not to the end.
+	for i := 0; i < 500 && m.modalSeen < 50; i++ {
+		m, _ = update(t, m, press("pgdown"))
+	}
+	if m.modalSeen < 50 {
+		t.Fatalf("test setup: reading progress only reached %d of %d lines", m.modalSeen, len(m.modalText()))
+	}
+	if m.modalFullySeen() {
+		t.Fatal("test setup: the whole command was read at the narrow width")
+	}
+	m, _ = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 10})
+	if wide := len(m.modalText()); wide > 50 {
+		t.Fatalf("test setup: %d wrapped lines at the wide width, want at most 50", wide)
+	}
+	m, _ = update(t, m, press("end"))
+	m, _ = update(t, m, press("y"))
+	select {
+	case <-reply:
+		t.Fatal("approved after a resize using reading progress from the old width")
+	default:
+	}
+	if m.modalSeen > m.modalBodyHeight(len(m.modalText())) {
+		t.Fatalf("reading progress %d survived the resize", m.modalSeen)
+	}
+	// Same-width resize keeps the progress.
+	m, _ = update(t, m, press("home"))
+	m, _ = update(t, m, press("pgdown"))
+	seen := m.modalSeen
+	m, _ = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 10})
+	if m.modalSeen != seen {
+		t.Fatal("a resize that kept the width reset the reading progress")
+	}
+}

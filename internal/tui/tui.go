@@ -231,6 +231,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// Resizing only re-lays out the screen; it never touches the run.
+		if msg.Width != m.width && len(m.approvals) > 0 {
+			// Line numbers change when the text re-wraps, so the reading
+			// progress is void: the whole command must be read again.
+			m.modalOff, m.modalSeen = 0, 0
+		}
 		m.width, m.height = msg.Width, msg.Height
 		m.layout()
 		return m, nil
