@@ -6,7 +6,7 @@
 
 Brunel 是一個面向 Windows x64 的薄型 coding harness 實驗，重點是工具、安全邊界、透明度與完成證據。
 
-技術棧：Go 1.25.x、零 CGO、PowerShell 7、Windows x64、本機檔案與 Windows Credential Manager。repository 目前 `go.mod` 仍為 Go 1.22；TUI 實作前需同步工具鏈。
+技術棧：Go 1.25.x、零 CGO、PowerShell 7、Windows x64、本機檔案與 Windows Credential Manager。`go.mod` 為 `go 1.25.0`；新增或升級依賴時須確認其 `go` 指令不高於 1.25，避免工具鏈被帶到 1.26。
 
 ## 工作原則
 

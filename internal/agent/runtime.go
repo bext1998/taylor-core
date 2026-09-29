@@ -40,6 +40,7 @@ type Runtime struct {
 	mode          string
 	now           func() time.Time
 	brunelExe     string
+	extraEnv      map[string]string
 	sink          EventSink
 	// start launches the pi subprocess. It defaults to pirpc.Start; tests
 	// inject a fake so the run loop can be exercised without a real
@@ -62,6 +63,14 @@ func NewRuntime(opts pirpc.LaunchOptions, cred pirpc.Credential, s *session.Sess
 		brunelExe:     brunelExe,
 		start:         pirpc.Start,
 	}
+}
+
+// SetExtraEnv adds environment entries to the pi subprocess (and, through
+// inheritance, to the extension and its --taylor-tool children). The host
+// uses it to hand down the approval channel (internal/approval). It cannot
+// override BRUNEL_EXE or BRUNEL_MODE, which Run always sets itself.
+func (r *Runtime) SetExtraEnv(env map[string]string) {
+	r.extraEnv = env
 }
 
 // runState accumulates the run-level facts the completion report and the
@@ -103,10 +112,13 @@ func (r *Runtime) Run(ctx context.Context, task string, sink EventSink) (*comple
 	}
 
 	// (1) Launch and manage the pi subprocess.
-	proc, err := r.start(ctx, r.options, r.credential, r.workspaceRoot, map[string]string{
-		"BRUNEL_EXE":  exe,
-		"BRUNEL_MODE": r.mode,
-	})
+	env := make(map[string]string, len(r.extraEnv)+2)
+	for k, v := range r.extraEnv {
+		env[k] = v
+	}
+	env["BRUNEL_EXE"] = exe
+	env["BRUNEL_MODE"] = r.mode
+	proc, err := r.start(ctx, r.options, r.credential, r.workspaceRoot, env)
 	if err != nil {
 		return r.report(completion.StatusFailed, st, started), err
 	}

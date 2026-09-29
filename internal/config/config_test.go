@@ -117,6 +117,31 @@ func TestCredentialErrorsDoNotExposeSourceDetails(t *testing.T) {
 	}
 }
 
+func TestMissingCredentialIsOptional(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source fakeCredentialSource
+	}{
+		{"not-found", fakeCredentialSource{err: ErrCredentialNotFound}},
+		{"empty", fakeCredentialSource{key: "  "}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeConfig(t, filepath.Join(root, ".brunel", "config.json"), `{"mode":"readonly","model_id":"anthropic/claude"}`)
+			resolved, err := NewLoader(root, t.TempDir(), tc.source).Load(context.Background(), CLIOverrides{})
+			if err != nil {
+				t.Fatalf("Load() error = %v, want nil for an absent credential", err)
+			}
+			if resolved.Config.Mode != ModeReadonly || resolved.Config.ModelID != "anthropic/claude" {
+				t.Fatalf("unexpected resolved config: %#v", resolved.Config)
+			}
+			if resolved.OpenRouterAPIKey() != "" {
+				t.Fatalf("OpenRouterAPIKey() = %q, want empty", resolved.OpenRouterAPIKey())
+			}
+		})
+	}
+}
+
 func TestResolvedFormattingNeverIncludesAPIKey(t *testing.T) {
 	loader := NewLoader(t.TempDir(), t.TempDir(), fakeCredentialSource{key: "super-secret-key"})
 	resolved, err := loader.Load(context.Background(), CLIOverrides{})

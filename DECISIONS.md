@@ -4,6 +4,24 @@
 
 ## 決策紀錄
 
+### 2026-09-28 — Issue #2：CONFIRM 批准經 named pipe 從 `--taylor-tool` 子行程送回主程式；OpenRouter 憑證改為選用
+
+**決策**（使用者裁決）：
+
+1. **批准通道**：主程式 `brunel`（TUI 或有 TTY 的純文字模式）為每次執行開一條 Windows named pipe（`\\.\pipe\brunel-approval-<隨機值>`），把 pipe 名稱與一次性 token 經環境變數 `BRUNEL_APPROVAL_PIPE`／`BRUNEL_APPROVAL_TOKEN` 傳給 Pi 子行程，再由 Pi extension 繼承給 `brunel --taylor-tool` 子行程。子行程的 `safety.Gate` 取得的 Approver 是 `approval.Client`，遇到 CONFIRM 時把 Gate 自己產生的 `ApprovalPrompt`（命令＋原因）經 pipe 送回主程式，由 TUI modal 或終端提示詢問使用者，只回傳「批准本次／拒絕」。主程式沒有 TTY 時不開通道，子行程維持 nil Approver，CONFIRM 照舊回 `E_APPROVAL_REQUIRED_NO_TTY`。
+2. **憑證**：`config.Load` 在 Credential Manager 沒有 OpenRouter key（`ERROR_NOT_FOUND`）時不再失敗，只回傳空 key；CLI 只在實際 provider 是 `openrouter` 時要求並注入該 key，其他 provider 交給 Pi 自行尋找憑證。其他讀取錯誤仍回 `E_CONFIG_CREDENTIAL`。
+3. **工具鏈**：`go.mod` 由 Go 1.22 升為 `go 1.25.0`，引入 Bubble Tea v2（`charm.land/bubbletea/v2` v2.0.9）、Bubbles v2、Lip Gloss v2；bubbletea v2.0.10、`golang.org/x/sys` v0.48、`golang.org/x/term` v0.46 起要求 Go 1.26，故釘選在最後一個支援 1.25 的版本。
+
+**原因**：ADR-002 Route B 之後，唯一安全決策入口 `Gate.Decide` 跑在沒有 TTY 的 `--taylor-tool` 子行程（主程式 → pi → Node extension → brunel.exe），規格 §5.2 要求的 TUI 批准 modal 無法直接接到它；spec、ADR-002 與既有決策都沒定義跨行程的批准路徑。named pipe 讓 Gate 留在子行程、仍是唯一呼叫 Approver 的地方（INV-1／INV-4 不變），主程式端只是轉送 Gate 的提示並回傳人的回答，不做分類或授權。憑證部分：spec v1.3 §5.3 已開放多家 provider，但 `config.Load` 仍強制要求 OpenRouter key，會讓只用其他 provider 的使用者無法啟動。
+
+**安全邊界**：pipe 的 DACL 只允許目前使用者、拒絕遠端連線；每個請求都要附 token（常數時間比對）；子行程讀到通道後立即從自己的環境移除這兩個變數，`run_powershell` 啟動的 pwsh 不會繼承 token；任何通道錯誤（連不到、token 錯、格式錯）都視為拒絕。主程式一次只顯示一個批准請求；取消執行時開著的批准一律回拒絕。
+
+**影響範圍**：新增 `internal/approval`（Broker／Client）、`internal/tui`、`cmd/brunel/cli.go`／`plain.go`；`cmd/brunel/main.go`（`--taylor-tool` 取得 Approver）；`internal/agent/runtime.go`（`SetExtraEnv`）；`internal/config`（`ErrCredentialNotFound`）；`internal/completion/write.go`（`--report` 最小原子寫出，完整 CT-8 屬 #14）；`go.mod`／`go.sum`。GitHub Issue [#2](https://github.com/bext1998/taylor-core/issues/2)。
+
+**狀態**：確認
+
+---
+
 ### 2026-09-18 — Issue #47：修正去重 key 裁決，改用「per-source 最後送達內容」
 
 **決策**：推翻同日稍早的第 3 項裁決（見下一則）。`agentsMDKey` 的「目錄＋內容」設計改為 `Map<source, lastContent>`：`shouldSend` 判斷「當前內容是否與該來源上次送達的內容不同」，不同才送並更新記錄。不再沿用原本的 `Set<目錄＋內容>` 永久記錄法。

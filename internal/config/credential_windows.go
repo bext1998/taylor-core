@@ -13,6 +13,10 @@ import (
 
 const credentialTypeGeneric = 1
 
+// errorNotFound is ERROR_NOT_FOUND, what CredReadW reports when the target
+// has no stored credential.
+const errorNotFound = syscall.Errno(1168)
+
 type credential struct {
 	Flags              uint32
 	Type               uint32
@@ -52,6 +56,9 @@ func (platformCredentialSource) OpenRouterAPIKey(context.Context) (string, error
 		uintptr(unsafe.Pointer(&pointer)),
 	)
 	if result == 0 {
+		if errors.Is(callErr, errorNotFound) {
+			return "", ErrCredentialNotFound
+		}
 		return "", callErr
 	}
 	defer credFree.Call(uintptr(unsafe.Pointer(pointer)))

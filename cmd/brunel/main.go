@@ -12,6 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
+	"github.com/bext1998/brunel/internal/approval"
 	brunelexec "github.com/bext1998/brunel/internal/exec"
 	"github.com/bext1998/brunel/internal/safety"
 	"github.com/bext1998/brunel/internal/tools"
@@ -69,12 +72,22 @@ type taylorToolResponse struct {
 }
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	args := os.Args[1:]
+	if !isTaylorToolInvocation(args) {
+		tty := terminals{
+			stdin:  term.IsTerminal(int(os.Stdin.Fd())),
+			stdout: term.IsTerminal(int(os.Stdout.Fd())),
+		}
+		os.Exit(runCLI(args, defaultCLIEnv(os.Stdin, os.Stdout, os.Stderr, tty)))
+	}
+	os.Exit(run(args, os.Stdin, os.Stdout, os.Stderr))
 }
 
+// run is the `brunel --taylor-tool <name>` entry point that taylor-tools.ts
+// spawns for every tool call (ADR-002 Route B).
 func run(args []string, input io.Reader, output, diagnostics io.Writer) int {
 	if !isTaylorToolInvocation(args) {
-		_, _ = fmt.Fprintln(diagnostics, "brunel: not yet implemented (see #2)")
+		_, _ = fmt.Fprintln(diagnostics, "brunel: --taylor-tool is required")
 		return 1
 	}
 
@@ -164,10 +177,20 @@ func runTaylorTool(ctx context.Context, config taylorToolConfig, input io.Reader
 		mode = safety.ModeReadonly
 	}
 
+	// The host brunel process passes an approval channel down only when a
+	// human can answer (a TTY); ClientFromEnv also removes the channel from
+	// this process's environment so pwsh children never inherit it. Without
+	// one the Gate gets a nil Approver and a CONFIRM decision fails closed
+	// with E_APPROVAL_REQUIRED_NO_TTY (spec.md §6.3).
+	var approver safety.Approver
+	if client := approval.ClientFromEnv(); client != nil {
+		approver = client
+	}
+
 	runner, runnerErr := brunelexec.NewRunner()
 	registry := &tools.Registry{
 		Workspace: workspaceBinding,
-		Gate:      safety.NewGate(mode, nil, workspaceBinding.Root()),
+		Gate:      safety.NewGate(mode, approver, workspaceBinding.Root()),
 		Runner:    runner,
 		ExecLimits: tools.ExecLimits{
 			DefaultTimeout: config.timeout,
@@ -177,9 +200,6 @@ func runTaylorTool(ctx context.Context, config taylorToolConfig, input io.Reader
 		},
 	}
 
-	// This one-shot subprocess has no TTY or presentation layer. A CONFIRM
-	// run_powershell call therefore fails closed with E_APPROVAL_REQUIRED_NO_TTY;
-	// the approval UX belongs to issue #9's model-facing flow.
 	result, err := registry.Call(ctx, config.name, json.RawMessage(params))
 	if err != nil {
 		if config.name == "run_powershell" && runner == nil && runnerErr != nil && tools.ErrorCode(err) == brunelexec.ErrUnsupportedPlatform.Code {
