@@ -113,8 +113,9 @@ func checkPiVersion(ctx context.Context, path string, prefix []string, workDir s
 	cmd.Dir = workDir
 	cmd.WaitDelay = time.Second
 	hideVersionWindow(cmd)
-	// Do not inject provider credentials or approval tokens into this probe and
-	// never expose arbitrary stdout/stderr in a public error.
+	// The probe inherits the host environment (cmd.Env is nil), but does not
+	// receive the RPC launch's additional credential or approval-token injection.
+	// Never expose arbitrary stdout/stderr in a public error.
 	output := &versionOutput{}
 	cmd.Stdout = output
 	if err := cmd.Run(); err != nil {
