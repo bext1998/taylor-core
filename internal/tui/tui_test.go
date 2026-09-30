@@ -273,6 +273,24 @@ func TestNarrowTerminalKeepsEssentials(t *testing.T) {
 	}
 }
 
+// TestStreamingSurvivesModelCopies: Bubble Tea calls the value-receiver Update
+// with a fresh copy of the model for every message, so a streamed reply must
+// keep working when the model is copied between two deltas. The copies here
+// are forced into different variables; TestStreamingAndStatusLine alone can
+// pass by luck when successive copies happen to land on the same address.
+func TestStreamingSurvivesModelCopies(t *testing.T) {
+	first := newModel(Options{}, newTestBridge(&capture{}))
+	first.applyEvent(agent.Event{Kind: agent.EventAssistantDelta, Text: "Hel"})
+
+	second := first
+	second.applyEvent(agent.Event{Kind: agent.EventAssistantDelta, Text: "lo"})
+	second.flushAssistant()
+
+	if got := second.lines[len(second.lines)-1]; got != "Hello" {
+		t.Fatalf("streamed reply after a model copy = %q, want %q", got, "Hello")
+	}
+}
+
 func TestStreamingAndStatusLine(t *testing.T) {
 	m := newModel(Options{Model: "openrouter/x", Mode: "readonly"}, newTestBridge(&capture{}))
 	m, _ = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 20})

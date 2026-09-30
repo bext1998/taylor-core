@@ -196,7 +196,7 @@ type model struct {
 	input         textarea.Model
 
 	lines      []string // finished transcript entries
-	assistant  strings.Builder
+	assistant  string   // streamed reply in progress; a string, not a strings.Builder, because Update copies the model on every message
 	state      runState
 	usage      provider.Usage
 	usageSeen  bool
@@ -389,7 +389,7 @@ func (m model) finishRun(msg runDoneMsg) (tea.Model, tea.Cmd) {
 func (m *model) applyEvent(e agent.Event) {
 	switch e.Kind {
 	case agent.EventAssistantDelta:
-		m.assistant.WriteString(e.Text)
+		m.assistant += e.Text
 	case agent.EventToolStarted:
 		m.flushAssistant()
 		m.addLine(styleTool.Render("⚙ " + e.ToolName + " …"))
@@ -434,11 +434,11 @@ func (m *model) dropApproval(reply chan<- bool) {
 }
 
 func (m *model) flushAssistant() {
-	if m.assistant.Len() == 0 {
+	if m.assistant == "" {
 		return
 	}
-	m.lines = append(m.lines, m.assistant.String())
-	m.assistant.Reset()
+	m.lines = append(m.lines, m.assistant)
+	m.assistant = ""
 }
 
 func (m *model) addLine(s string) {
@@ -449,8 +449,8 @@ func (m *model) addLine(s string) {
 func (m *model) refreshTranscript() {
 	atBottom := m.transcript.AtBottom()
 	entries := m.lines
-	if m.assistant.Len() > 0 {
-		entries = append(append([]string(nil), m.lines...), m.assistant.String())
+	if m.assistant != "" {
+		entries = append(append([]string(nil), m.lines...), m.assistant)
 	}
 	w := max(m.width, 1)
 	wrapped := make([]string, len(entries))
