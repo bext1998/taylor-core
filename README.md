@@ -14,6 +14,25 @@ Brunel 是一個面向 Windows x64 的實驗性 coding harness，用來驗證：
 - Node.js/npm 與 Git for Windows（[ADR-002](docs/adr/ADR-002-pi-agent-runtime.md)：model-facing Agent Runtime 委派給 [Pi](https://github.com/earendil-works/pi)，經 `pi --mode rpc` 呼叫）
 - `CGO_ENABLED=0` 靜態編譯
 
+## 安裝與部署
+
+先安裝 Node.js **22.19.0 以上**（含 npm）、PowerShell 7 與 Git for Windows。在 Brunel repository 根目錄執行：
+
+```powershell
+npm ci
+go build -o brunel.exe ./cmd/brunel
+```
+
+`npm ci` 是必要步驟，會依 `package-lock.json` 安裝精確鎖定的 **Pi 0.85.1** 與相依套件。不要以 `npm install -g` 安裝 Pi 作為部署步驟。
+
+`brunel.exe`、`taylor-tools.ts`、`agents-md-delivery.ts`、`package.json`、`package-lock.json` 與 `node_modules/` 應放在同一安裝目錄；也可將前五個檔案複製到部署目錄後，在該目錄重新執行 `npm ci`。從任意目標 workspace 執行該目錄下的 `brunel.exe` 即可。
+
+啟動時優先從 extension 所在目錄、再從 `brunel.exe` 所在目錄尋找 `node_modules/@earendil-works/pi-coding-agent/package.json`，讀取 `bin.pi`，以 `node <cli.js>` 啟動，避開 Windows `.cmd` shim。本機套件缺失時才查找 PATH 上的 `pi`（相容既有安裝）；本機套件損壞會直接失敗，不會改用全域版本。
+
+每次啟動 RPC 前都會執行同一入口的 `--version`，僅接受 `0.85.1`。版本不符回傳 `E_PI_VERSION_MISMATCH`；缺少 Pi／Node 或無法查詢版本回傳 `E_RUNTIME_REQUIRED`，可先重新執行 `npm ci`。本機版本存在時，全域 Pi 的版本不影響選擇。
+
+升級 Pi 必須同步 `package.json`、lockfile 與 `internal/pirpc.SupportedPiVersion`，並重跑對應 Gate 等價測試（spec §16 OQ-8）；本次沿用既有版本，正式升級 checklist 仍屬後續工作。
+
 ## 使用方式
 
 ```text

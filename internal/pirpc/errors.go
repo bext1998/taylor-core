@@ -74,6 +74,9 @@ var (
 	// matches it; EC-13 names it for a missing Node.js/npm or a pi that
 	// fails to start.
 	ErrPiRuntimeRequired = &Error{Code: "E_RUNTIME_REQUIRED"}
+
+	// Only the exact version verified alongside the RPC bridge is supported.
+	ErrPiVersionMismatch = &Error{Code: "E_PI_VERSION_MISMATCH"}
 )
 
 func codeError(code, message string, cause error) error {

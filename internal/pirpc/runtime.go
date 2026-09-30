@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -367,8 +366,15 @@ func Start(ctx context.Context, opts LaunchOptions, cred Credential, workDir str
 		return nil, codeError(ErrInvalidArgument.Code, "work dir is required", nil)
 	}
 
-	piPath, err := resolvePiPath()
+	piPath, err := resolvePiPath(opts, workDir)
 	if err != nil {
+		return nil, err
+	}
+	piPath, prefix, err := piInvocation(piPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkPiVersion(ctx, piPath, prefix, workDir); err != nil {
 		return nil, err
 	}
 	args, err := BuildArgs(opts)
@@ -383,7 +389,7 @@ func Start(ctx context.Context, opts LaunchOptions, cred Credential, workDir str
 	}
 	env = mergeEnv(env, extraEnv)
 
-	return startPiProcess(ctx, piPath, args, env, workDir)
+	return startPiProcess(ctx, piPath, append(prefix, args...), env, workDir)
 }
 
 // mergeEnv adds or overrides entries from add onto base, returning a new
@@ -408,16 +414,4 @@ func mergeEnv(base []string, add map[string]string) []string {
 		}
 	}
 	return out
-}
-
-// resolvePiPath locates the pi executable on PATH. It never falls back to
-// npx or a project-local install: a missing pi means the Node.js/npm
-// runtime requirement (spec.md §11 EC-13) is unmet, which must surface as
-// E_RUNTIME_REQUIRED, not a silent no-op.
-func resolvePiPath() (string, error) {
-	path, err := exec.LookPath("pi")
-	if err != nil {
-		return "", codeError(ErrPiRuntimeRequired.Code, "pi (Node.js/npm runtime) was not found on PATH", err)
-	}
-	return path, nil
 }

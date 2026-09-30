@@ -15,10 +15,25 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		if os.Getenv("FAKE_PI_VERSION_EXIT") == "1" {
+			os.Exit(1)
+		}
+		version, ok := os.LookupEnv("FAKE_PI_VERSION")
+		if !ok {
+			version = "0.85.1"
+		}
+		fmt.Println(version)
+		return
+	}
+	if marker := os.Getenv("FAKE_PI_RPC_MARKER"); marker != "" {
+		_ = os.WriteFile(marker, []byte("started"), 0600)
+	}
 	// Read (and ignore) the initial prompt command Pi was sent.
 	_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 
