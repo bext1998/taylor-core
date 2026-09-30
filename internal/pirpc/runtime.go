@@ -46,7 +46,8 @@ type Event struct {
 	Type string
 
 	// Response is set when Type == "response": the command ack Pi sends
-	// for an RPC command, with Success and the Command it acked.
+	// for an RPC command, with Success and the Command it acked. A rejected
+	// command (Success false) carries Pi's reason in ErrorMsg when it gives one.
 	Response bool
 	Success  bool
 	Command  string
@@ -101,6 +102,7 @@ type wireEvent struct {
 	Type       string          `json:"type"`
 	Success    bool            `json:"success"`
 	Command    string          `json:"command"`
+	Error      string          `json:"error"`
 	Usage      *piUsage        `json:"usage"`
 	Assistant  json.RawMessage `json:"assistantMessageEvent"`
 	Message    json.RawMessage `json:"message"`
@@ -147,7 +149,7 @@ func decodeRPCEvent(line []byte) (Event, bool) {
 		// The first line is Pi's session header; nothing to translate.
 		return Event{Type: "session"}, false
 	case "response":
-		return Event{Type: "response", Response: true, Success: w.Success, Command: w.Command}, true
+		return Event{Type: "response", Response: true, Success: w.Success, Command: w.Command, ErrorMsg: w.Error}, true
 	case "message_end":
 		// message_end carries the final assistant message for one turn, including
 		// stopReason ("stop", "length", "toolUse", "error", "aborted"). It is

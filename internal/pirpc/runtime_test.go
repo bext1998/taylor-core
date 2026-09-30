@@ -47,6 +47,13 @@ func TestDecodeRPCEvent(t *testing.T) {
 			ok:   true,
 		},
 		{
+			// Captured from a real pi 0.85.1 run with no credential for the provider.
+			name: "response failure carries pi's error text",
+			line: `{"type":"response","command":"prompt","success":false,"error":"No API key found for anthropic."}`,
+			want: Event{Type: "response", Response: true, Success: false, Command: "prompt", ErrorMsg: "No API key found for anthropic."},
+			ok:   true,
+		},
+		{
 			name: "text_delta carries usage and delta",
 			line: `{"type":"message_update","usage":{"input":10,"output":20,"cacheRead":5,"cacheWrite":0,"totalTokens":35,"cost":{"input":0.001,"output":0.002,"total":0.003}},"assistantMessageEvent":{"type":"text_delta","delta":"Hello world"}}`,
 			want: Event{

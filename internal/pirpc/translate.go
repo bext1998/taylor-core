@@ -46,9 +46,9 @@ var messageKeywords = []struct {
 	code     *Error
 	keywords []string
 }{
-	{ErrPiProviderAuth, []string{"unauthorized", "invalid api key", "invalid_api_key", "authentication failed", "forbidden", "401", "403"}},
+	{ErrPiProviderAuth, []string{"unauthorized", "invalid api key", "invalid_api_key", "no api key", "authentication failed", "forbidden", "401", "403"}},
 	{ErrPiProviderQuota, []string{"quota", "rate limit", "rate_limit", "insufficient credits", "429", "too many requests"}},
-	{ErrPiModelNotFound, []string{"model not found", "unknown model", "unsupported model", "no such model"}},
+	{ErrPiModelNotFound, []string{"model not found", "unknown model", "unsupported model", "no such model", "not a valid model", "invalid model"}},
 	{ErrProviderProtocol, []string{"malformed", "unexpected response", "protocol error", "invalid json", "parse error"}},
 }
 

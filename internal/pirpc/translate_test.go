@@ -40,6 +40,27 @@ func TestTranslateProviderErrorFallsBackToMessageKeywords(t *testing.T) {
 	}
 }
 
+// TestTranslateProviderErrorRealWorldMessages pins the exact texts observed
+// from a real pi 0.85.1 + OpenRouter/OpenAI run (Issue #8 verification,
+// 2026-10-01). A user who mistypes a model id or has no key configured must
+// see the specific code, not the generic fallback, to know what to fix.
+func TestTranslateProviderErrorRealWorldMessages(t *testing.T) {
+	cases := map[string]string{
+		// OpenRouter, unknown model id.
+		`400: {"message":"z-ai/does-not-exist-xyz-999 is not a valid model ID","code":400}`: ErrPiModelNotFound.Code,
+		// Pi itself, provider selected but no credential discovered.
+		"No API key found for anthropic.\n\nUse /login to log into a provider via OAuth or API key.": ErrPiProviderAuth.Code,
+		// OpenAI, wrong key (already classified; guards against regression).
+		`OpenAI API error (401): {"message":"Incorrect API key provided","code":"invalid_api_key"}`: ErrPiProviderAuth.Code,
+	}
+	for message, want := range cases {
+		err := TranslateProviderError(ProviderErrorReport{Message: message})
+		if ErrorCode(err) != want {
+			t.Errorf("TranslateProviderError(Message=%q) = %q, want %q", message, ErrorCode(err), want)
+		}
+	}
+}
+
 func TestTranslateProviderErrorDefaultsToGenericProviderError(t *testing.T) {
 	err := TranslateProviderError(ProviderErrorReport{Message: "the model server had a hiccup"})
 	if ErrorCode(err) != ErrPiProviderError.Code {
