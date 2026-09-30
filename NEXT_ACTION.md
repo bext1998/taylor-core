@@ -25,8 +25,8 @@
 - **#47（F-10 時序語意）待產品層裁決**：三個候選方向（接受操作後送達並更新 spec §7.3 表述／新 RPC context 注入指令／兩段式工具呼叫）擇一；裁決前 #11 維持「部分實作」狀態。
 - 無 Alpha 1 硬阻塞；`docs/spec.md` §5／§9 的 Route B 修訂已於 v1.3 完成。
 - Gate 0（物理上無 Git Bash 的環境）補測：依使用者裁決不另建 Issue，維持 ADR-002 現況——Git for Windows 為已文件化安裝依賴，spec OQ-9 視為接受風險、不驗證。
-- OQ-8（Pi 版本釘選與升級前 Gate 重跑政策）：版本釘選／本機安裝／啟動版本檢查已由 PR #59 合併；正式升級 Gate 等價測試 checklist 未實作。#43 的四項程式驗收已有證據，Issue 是否關閉、checklist 是否另建 Issue，待使用者裁決。
-- #59 審查非阻塞事項：錯誤碼與 spec EC-13 對齊（既有 `E_RUNTIME_REQUIRED` vs `E_PI_RUNTIME_REQUIRED`，新 `E_PI_VERSION_MISMATCH` 尚未記載）、版本探測未納入 Job Object；是否另外開 Issue 追蹤待使用者裁決，不自行修改 spec 或宣告 INV-7 例外。
+- OQ-8（Pi 版本釘選與升級前 Gate 重跑政策）：版本釘選／本機安裝／啟動版本檢查已由 PR #59 合併；正式升級 Gate 等價測試 checklist 由 [#61](https://github.com/bext1998/taylor-core/issues/61) 追蹤。文件 PR #60 已合併；#43 於 2026-09-30 依使用者裁決以 completed 關閉。
+- #59 審查非阻塞事項：錯誤碼與 spec EC-13 對齊（既有 `E_RUNTIME_REQUIRED` vs `E_PI_RUNTIME_REQUIRED`，新 `E_PI_VERSION_MISMATCH` 尚未記載）、版本探測未納入 Job Object；分別由 [#62](https://github.com/bext1998/taylor-core/issues/62)／[#63](https://github.com/bext1998/taylor-core/issues/63) 追蹤；先確認契約／方案，再依必要裁決修改 spec，不宣告尚未批准的 INV-7 例外。
 - OQ-10（檔案寫入的 sub-millisecond rename 競態）：Alpha 1 已裁決接受為 best-effort（見 DECISIONS.md 2026-09-08）；Alpha 3「單一 writer」時重評，屆時若 Brunel 內部出現併發 writer 需加 path-keyed 序列化。
 - 公開錯誤不含 secret 的最終責任邊界：Pi 自行探索、Brunel 從未持有的 provider key 若被 Pi 回顯於錯誤訊息，`internal/pirpc` 只能做啟發式遮罩（`internal/redact` 已能在 Brunel 持有實際值時精確替換）。責任歸屬需在 spec 或 #9 定義。
 - spec §16 其餘 Open Questions 依各自裁決前行為處理。
