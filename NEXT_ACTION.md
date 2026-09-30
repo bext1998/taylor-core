@@ -2,10 +2,10 @@
 
 ## 2026-09-30 Session 交接
 
-- #43 實作提交 `78eceaa` 已推送至 `maze/2026-09-30-eeff375`，並建立 [PR #59](https://github.com/bext1998/taylor-core/pull/59)。實作沿用 Pi `0.85.1`，本機 manifest bin 直接由 Node 啟動、啟動前嚴格版本檢查，部署需 `npm ci`。
-- 下一步確認 PR #59 的 Windows／Ubuntu CI 結果並完成審查；PR 合併與驗收證據完備前保持 #43 開放。GitHub `workflow` 權限阻塞已解除；本機真實 Pi `Start`／`get_state` smoke 通過，完整模型／工具閉環仍由 #49 追蹤。
+- #43 變更在 `maze/2026-09-30-eeff375`。實作沿用 Pi `0.85.1`，本機 manifest bin 直接由 Node 啟動、啟動前嚴格版本檢查，部署需 `npm ci`。
+- 提交後依 PR 審查流程處理；PR 合併與驗收證據完備前保持 #43 開放。真實模型／工具閉環仍由 #49 追蹤。
 
-> 最後同步：2026-09-30
+> 最後同步：2026-09-29
 
 ## 下一個 Session 目標
 

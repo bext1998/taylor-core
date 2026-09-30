@@ -1,22 +1,21 @@
 # Brunel — 當前狀態
 
-> 最後同步：2026-09-30
-> Branch：maze/2026-09-30-eeff375（PR #59；main 基線為 `71b9f9b`）
-> GitHub：https://github.com/bext1998/taylor-core/pull/59
+> 最後同步：2026-09-29
+> Branch：main
+> Working tree：乾淨（與 `origin/main` 同步）
 
 ## 2026-09-30 Session：Issue #43 實作
 
 - 實作分支 `maze/2026-09-30-eeff375`：依 [#43 留言](https://github.com/bext1998/taylor-core/issues/43#issuecomment-5896431648) 補充方向，保留既有 Pi `0.85.1`、改為一般 dependency、同步 lockfile；本機套件 manifest 的 `bin.pi` → `node <cli.js>` 優先於全域 PATH，每次 Start 前查詢版本，版本不符回 `E_PI_VERSION_MISMATCH`。
 - 補上部署目錄與必要 `npm ci` 說明、版本／本機優先回歸測試、可選真實 Pi RPC 啟動 smoke 與 Windows CI 接線。此 smoke 不呼叫模型，完整模型／工具 E2E 仍由 #49 追蹤；#43 尚未經 PR 審查／合併，不宣告 Issue 完成。
-- 實作提交 `78eceaa` 已推送，並建立 [PR #59](https://github.com/bext1998/taylor-core/pull/59)（`Related to #43`，base `main`）；PR 開放、尚未合併，等待審查與遠端 CI 結果。先前缺少 `workflow` 權限的推送阻塞已透過 GitHub CLI 重新授權解除。
-- 本機驗證：`npm ci`、Windows `go build`／`go vet`／全套 `go test`（含 `TestTCPIRPC001`）、`npm test`、Linux amd64 零 CGO 交叉編譯與 vet 均通過；真實本機 Pi `0.85.1` 的 `Start`／RPC `get_state` smoke 通過。遠端 Windows／Ubuntu CI 已啟動，結果待確認。
+- 本機驗證：`npm ci`、Windows `go build`／`go vet`／全套 `go test`（含 `TestTCPIRPC001`）、`npm test`、Linux amd64 零 CGO 交叉編譯與 vet 均通過；真實本機 Pi `0.85.1` 的 `Start`／RPC `get_state` smoke 通過。遠端 CI 尚未執行。
 
 ## 架構轉向
 
 - [ADR-002](docs/adr/ADR-002-pi-agent-runtime.md)（2026-08-12）：放棄零依賴單檔 exe 需求（ADR-001 硬需求 (a)、spec.md 原 G-1），改採 Pi 作為 model-facing Agent Runtime（Route B）；ADR-001 部分 Superseded，Job Object／Workspace／Safety／PowerShell 執行器與 Go 1.25.x／Bubble Tea v2 基線仍維持 Go 實作。依據 [#24 Pi Compatibility Spike](https://github.com/bext1998/brunel/issues/24) 的 Gate 1/3/4 Pass、Gate 2 Pass（有但書）、Gate 0 Partial；Spike 分支 `agent/pi-spike-issue-24` 已 push 至遠端（不合併）。
 - `docs/spec.md` 已同步修訂至 **v1.3**：8 個工具全留 Go（經 `taylor-tools.ts` extension 暴露給 Pi）、Session 以 Brunel 自己的 `events.jsonl` 為準（Pi session 停用）、Provider 開放多家（不再限定 OpenRouter，交由 Pi 生態決定）。新增 INV-9（`internal/pirpc` 禁止送出 `bash` RPC command）、OQ-8／OQ-9。
 - 架構轉向已拆解為 Issues（2026-09-08）：#8（F-7）、#9（F-8）已依 v1.3 §4 矩陣改標題與範圍；新增 [#29](https://github.com/bext1998/brunel/issues/29)（`taylor-tools.ts` extension 與 `brunel.exe --taylor-tool` 派工，由 #9 拆出）、[#30](https://github.com/bext1998/brunel/issues/30)（INV-9 `bash` command 禁令與 CI lint／AST 檢查，由 #9 拆出），皆為 #1 的 sub-issue。#9 相依改為 Blocked by #4／#8／#29／#30。
-- Gate 0（物理上無 Git Bash 的環境）補測依使用者裁決不另建 Issue，維持 ADR-002 現況：Git for Windows 為已文件化安裝依賴，spec OQ-9 視為接受風險、不驗證。OQ-8（Pi 版本釘選與升級前 Gate 重跑政策）由 [#43](https://github.com/bext1998/taylor-core/issues/43) 追蹤；版本釘選／本機安裝／啟動版本檢查見 PR #59，正式升級 checklist 尚未完成。
+- Gate 0（物理上無 Git Bash 的環境）補測依使用者裁決不另建 Issue，維持 ADR-002 現況：Git for Windows 為已文件化安裝依賴，spec OQ-9 視為接受風險、不驗證。OQ-8（Pi 版本釘選政策）尚未建 Issue。
 
 ## 進行中 Issues
 
