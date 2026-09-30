@@ -221,6 +221,47 @@ func TestRunSettledWithErrorIsNotCompleted(t *testing.T) {
 	}
 }
 
+// TestRunRejectedPromptSurfacesPiError: when Pi refuses the initial prompt
+// (e.g. no credential for the chosen provider) it answers success=false with
+// the reason. The user must see that reason under a specific code, not a
+// generic "did not acknowledge" that hides what to fix.
+func TestRunRejectedPromptSurfacesPiError(t *testing.T) {
+	events := []pirpc.Event{
+		{Type: "response", Response: true, Success: false, Command: "prompt", ErrorMsg: "No API key found for anthropic."},
+	}
+	sink := &recordingSink{}
+	sess := newTestSession(t)
+	r := NewRuntime(pirpc.LaunchOptions{Model: "anthropic/m"}, pirpc.Credential{}, sess, t.TempDir(), "workspace", "").withFakeStart(newFake(events, nil), nil)
+
+	report, err := r.Run(context.Background(), "task", sink)
+	if err == nil {
+		t.Fatal("Run() error = nil, want the rejected-prompt error")
+	}
+	if code := pirpc.ErrorCode(err); code != pirpc.ErrPiProviderAuth.Code {
+		t.Fatalf("ErrorCode = %q, want %q", code, pirpc.ErrPiProviderAuth.Code)
+	}
+	if !strings.Contains(err.Error(), "No API key found for anthropic") {
+		t.Fatalf("error %q lost Pi's reason", err.Error())
+	}
+	if report.Status != completion.StatusFailed {
+		t.Fatalf("report.Status = %q, want %q", report.Status, completion.StatusFailed)
+	}
+}
+
+// A rejected prompt with no reason keeps the generic protocol error.
+func TestRunRejectedPromptWithoutReasonStaysGeneric(t *testing.T) {
+	events := []pirpc.Event{
+		{Type: "response", Response: true, Success: false, Command: "prompt"},
+	}
+	sess := newTestSession(t)
+	r := NewRuntime(pirpc.LaunchOptions{Model: "m"}, pirpc.Credential{}, sess, t.TempDir(), "workspace", "").withFakeStart(newFake(events, nil), nil)
+
+	_, err := r.Run(context.Background(), "task", &recordingSink{})
+	if code := pirpc.ErrorCode(err); code != "E_PI_RPC" {
+		t.Fatalf("ErrorCode = %q, want E_PI_RPC", code)
+	}
+}
+
 // TestRunSettledWithoutTerminalStateIsFailed covers the review finding that
 // agent_settled is not success evidence: settling with no message_end at
 // all means the protocol never delivered a terminal state, so the run must

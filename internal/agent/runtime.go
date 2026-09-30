@@ -450,6 +450,11 @@ func waitPromptAck(ctx context.Context, proc pirpc.PiProcess, timeout time.Durat
 				return false, preAck, &pirpc.Error{Code: "E_PI_RPC", Message: "pi closed the event stream before acknowledging the initial prompt", Cause: nil}
 			}
 			if ev.Type == "response" {
+				if !ev.Success && ev.ErrorMsg != "" {
+					// Pi rejected the prompt and said why (e.g. no credential for
+					// the provider): translate it so the user sees the reason.
+					return false, preAck, pirpc.TranslateProviderError(pirpc.ProviderErrorReport{Message: ev.ErrorMsg})
+				}
 				return ev.Success, preAck, nil
 			}
 			preAck = append(preAck, ev)
