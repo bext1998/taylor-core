@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -63,5 +65,50 @@ func TestWriteFileMissingParentLeavesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("partial report exists: %v", err)
+	}
+}
+
+// EC-5: if the process is interrupted while the report is being written, no
+// partial report may be left at the target path. The report is staged in a
+// temporary file and published in one step, so at every moment the target is
+// either absent or the complete JSON - never a prefix of it. A reader polling
+// the path while a large report is written proves that (#55).
+func TestWriteFileNeverExposesAPartialReport(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	rep := &Report{SchemaVersion: SchemaVersion, Status: StatusCompleted, Diff: strings.Repeat("x", 8<<20)}
+
+	var partial atomic.Int64
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if data, err := os.ReadFile(path); err == nil && !json.Valid(data) {
+				partial.Store(int64(len(data)))
+			}
+		}
+	}()
+	err := WriteFile(path, rep)
+	close(stop)
+	<-done
+
+	if err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if n := partial.Load(); n != 0 {
+		t.Fatalf("a reader saw a partial report of %d bytes at the target path", n)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || !json.Valid(data) {
+		t.Fatalf("final report is missing or invalid: %v", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Fatalf("temporary files left behind: %v", entries)
 	}
 }
