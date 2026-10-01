@@ -8,17 +8,23 @@ import (
 type Error struct {
 	Code   string
 	Source string
-	Cause  error
+	// Message is an optional secret-free hint appended to the error text.
+	Message string
+	Cause   error
 }
 
 func (e *Error) Error() string {
 	if e == nil {
 		return ""
 	}
-	if e.Source == "" {
-		return e.Code
+	text := e.Code
+	if e.Source != "" {
+		text = fmt.Sprintf("%s (%s)", e.Code, e.Source)
 	}
-	return fmt.Sprintf("%s (%s)", e.Code, e.Source)
+	if e.Message != "" {
+		text += ": " + e.Message
+	}
+	return text
 }
 
 func (e *Error) Unwrap() error { return e.Cause }
@@ -41,6 +47,13 @@ var (
 // actually targets OpenRouter (the CLI enforces that). Any other read error
 // is still E_CONFIG_CREDENTIAL.
 var ErrCredentialNotFound = errors.New("OpenRouter credential not found")
+
+// ErrCredentialInvalid is returned by a CredentialSource when a credential is
+// stored but is not usable key text (for example a blob that is neither UTF-8
+// nor UTF-16 without NUL). It is distinct from ErrCredentialNotFound: the user
+// has a key saved, it just cannot be read, so Load reports E_CONFIG_CREDENTIAL
+// with a hint instead of silently treating the key as absent.
+var ErrCredentialInvalid = errors.New("OpenRouter credential is not readable text")
 
 func configError(code, source string, cause error) error {
 	return &Error{Code: code, Source: source, Cause: cause}

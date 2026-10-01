@@ -33,10 +33,11 @@ type credential struct {
 }
 
 var (
-	advapi32  = syscall.NewLazyDLL("advapi32.dll")
-	credRead  = advapi32.NewProc("CredReadW")
-	credWrite = advapi32.NewProc("CredWriteW")
-	credFree  = advapi32.NewProc("CredFree")
+	advapi32   = syscall.NewLazyDLL("advapi32.dll")
+	credRead   = advapi32.NewProc("CredReadW")
+	credWrite  = advapi32.NewProc("CredWriteW")
+	credDelete = advapi32.NewProc("CredDeleteW")
+	credFree   = advapi32.NewProc("CredFree")
 )
 
 type platformCredentialSource struct{}
@@ -65,7 +66,7 @@ func (platformCredentialSource) OpenRouterAPIKey(context.Context) (string, error
 	if pointer == nil || pointer.CredentialBlob == nil || pointer.CredentialBlobSize == 0 {
 		return "", errors.New("Credential Manager credential is empty")
 	}
-	return string(unsafe.Slice(pointer.CredentialBlob, pointer.CredentialBlobSize)), nil
+	return decodeCredentialBlob(unsafe.Slice(pointer.CredentialBlob, pointer.CredentialBlobSize))
 }
 
 type platformCredentialWriter struct{}
@@ -99,6 +100,21 @@ func (platformCredentialWriter) SetOpenRouterAPIKey(key string) error {
 	}
 	result, _, callErr := credWrite.Call(uintptr(unsafe.Pointer(&value)), 0)
 	if result == 0 {
+		return callErr
+	}
+	return nil
+}
+
+func (platformCredentialWriter) DeleteOpenRouterAPIKey() error {
+	target, err := syscall.UTF16PtrFromString(OpenRouterCredentialTarget)
+	if err != nil {
+		return err
+	}
+	result, _, callErr := credDelete.Call(uintptr(unsafe.Pointer(target)), credentialTypeGeneric, 0)
+	if result == 0 {
+		if errors.Is(callErr, errorNotFound) {
+			return ErrCredentialNotFound
+		}
 		return callErr
 	}
 	return nil

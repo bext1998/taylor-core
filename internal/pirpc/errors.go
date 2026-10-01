@@ -67,6 +67,12 @@ var (
 	// the one being launched; the key is not injected (see env.go).
 	ErrCredentialProviderMismatch = &Error{Code: "E_PI_CREDENTIAL_MISMATCH"}
 
+	// ErrCredentialInvalid is returned by InjectCredentials when the key
+	// itself is unusable (contains NUL or is not valid UTF-8). The code
+	// matches internal/config's E_CONFIG_CREDENTIAL so the user sees one
+	// code whichever layer caught it; the key is never part of the message.
+	ErrCredentialInvalid = &Error{Code: "E_CONFIG_CREDENTIAL"}
+
 	// ErrPiRuntimeRequired is returned by Start when the Pi runtime
 	// (Node.js/npm and the pi executable) is missing or cannot be
 	// launched. Per spec.md §11 EC-13 the code is fixed as

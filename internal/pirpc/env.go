@@ -1,6 +1,9 @@
 package pirpc
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // providerCredentialEnv maps a provider name to the environment variable
 // Pi itself already recognizes for that provider's API key (confirmed
@@ -78,6 +81,15 @@ func InjectCredentials(base []string, provider string, cred Credential) ([]strin
 	name, ok := CredentialEnvVar(provider)
 	if !ok || strings.TrimSpace(cred.APIKey) == "" {
 		return out, nil
+	}
+
+	// A NUL would truncate or invalidate the environment block, and invalid
+	// UTF-8 would be silently rewritten to U+FFFD when the block is encoded;
+	// either way the subprocess would not get the key the user stored. Refuse
+	// it here, before launch, instead of failing inside CreateProcess.
+	if strings.IndexByte(cred.APIKey, 0) >= 0 || !utf8.ValidString(cred.APIKey) {
+		return out, codeError(ErrCredentialInvalid.Code,
+			`the OpenRouter key is not usable text (contains NUL or invalid UTF-8); save it again with "brunel login"`, nil)
 	}
 
 	credName, credOK := CredentialEnvVar(cred.Provider)

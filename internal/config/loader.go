@@ -86,6 +86,14 @@ func (l *Loader) Load(ctx context.Context, overrides CLIOverrides) (Resolved, er
 		if errors.Is(err, ErrUnsupportedPlatform) {
 			return Resolved{}, configError(ErrUnsupportedPlatform.Code, "credential-manager", err)
 		}
+		if errors.Is(err, ErrCredentialInvalid) {
+			return Resolved{}, &Error{
+				Code:    ErrConfigCredential.Code,
+				Source:  "credential-manager",
+				Message: `the stored OpenRouter key is not readable text; save it again with "brunel login"`,
+				Cause:   err,
+			}
+		}
 		return Resolved{}, configError(ErrConfigCredential.Code, "credential-manager", errors.New("OpenRouter credential unavailable"))
 	}
 	if strings.TrimSpace(key) == "" {

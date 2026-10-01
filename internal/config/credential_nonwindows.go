@@ -21,3 +21,7 @@ func NewPlatformCredentialWriter() CredentialWriter { return platformCredentialW
 func (platformCredentialWriter) SetOpenRouterAPIKey(string) error {
 	return ErrUnsupportedPlatform
 }
+
+func (platformCredentialWriter) DeleteOpenRouterAPIKey() error {
+	return ErrUnsupportedPlatform
+}
