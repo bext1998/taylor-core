@@ -75,6 +75,22 @@ func TestClassifyKeepsQuotedPathsWhole(t *testing.T) {
 	)
 }
 
+// Quoting must never hide something: an interpolated expression inside a
+// quoted string can read a path outside the workspace, and a backtick-escaped
+// quote does not close the string (so a later overwrite is still a statement
+// of its own).
+func TestClassifyQuotingDoesNotHideRisk(t *testing.T) {
+	wantConfirm(t,
+		"Write-Output \"C:\\ws\\$(Get-Content C:\\Windows\\win.ini)\"",
+		"Write-Output \"hello`\" there\"; Copy-Item a.txt b.txt; Write-Output .\\archive\\",
+		"Write-Output 'it''s'; Copy-Item a.txt b.txt; Write-Output .\\archive\\",
+		"Copy-Item a.txt b.txt; Write-Output \"unterminated",
+	)
+	wantAuto(t,
+		"Write-Output \"say `\"hi`\"; ok\"; Move-Item a.txt .\\archive\\",
+	)
+}
+
 // A harmless statement chained after a move must not be read as the move's
 // destination, but a move that is itself the overwrite must still be caught
 // wherever it sits in the chain (#31 item 3).
