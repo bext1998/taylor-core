@@ -55,6 +55,26 @@ func TestClassifyChecksEveryPathInACommaList(t *testing.T) {
 	)
 }
 
+// `;`, `&`, `,` and `|` are ordinary file-name characters inside quotes. A
+// quoted path or destination must be read whole: splitting it at those
+// characters turned an overwrite or an escape out of the workspace into AUTO.
+func TestClassifyKeepsQuotedPathsWhole(t *testing.T) {
+	wantConfirm(t,
+		`Copy-Item a.txt ".\archive\;victim.txt"`,
+		`Copy-Item a.txt ".\archive\&victim.txt"`,
+		`Copy-Item a.txt '.\archive\;victim.txt'`,
+		`Get-Content "C:\ws\safe;name\..\..\Windows\win.ini"`,
+		`Get-Content "C:\ws\safe,name\..\..\Windows\win.ini"`,
+		`Get-Content 'C:\ws\safe,name\..\..\Windows\win.ini'`,
+		`Get-Content "C:\Program Files\x\y.txt"`,
+	)
+	wantAuto(t,
+		`Get-Content "C:\ws\my dir\a.txt"`,
+		`Get-Content "C:\ws\a;b.txt"`,
+		`Move-Item a.txt ".\archive\"; Write-Output "done; really"`,
+	)
+}
+
 // A harmless statement chained after a move must not be read as the move's
 // destination, but a move that is itself the overwrite must still be caught
 // wherever it sits in the chain (#31 item 3).

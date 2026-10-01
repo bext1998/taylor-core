@@ -49,7 +49,10 @@ var (
 	//
 	// A comma or semicolon ends a path: `C:\ws\a.txt,C:\Windows\win.ini` is
 	// two paths in one argument list, and each must be checked on its own.
-	reAbsoluteWindowsPath = regexp.MustCompile(`(?i)[A-Z]:[\\/][^\s"'|,;]*|\\\\[^\s"'|,;]+`)
+	//
+	// Inside quotes those characters (and spaces) are part of the path, so a
+	// quoted path is matched whole first and only unquoted text is split.
+	reAbsoluteWindowsPath = regexp.MustCompile(`(?i)"(?:[A-Z]:[\\/]|\\\\)[^"]*"|'(?:[A-Z]:[\\/]|\\\\)[^']*'|[A-Z]:[\\/][^\s"'|,;]*|\\\\[^\s"'|,;]+`)
 )
 
 // classifyPowerShell returns (reason, true) if command matches one of the
@@ -150,14 +153,41 @@ func containsAny(tokens map[string]bool, set map[string]bool) bool {
 	return false
 }
 
+// splitStatements cuts command at `;`, `|`, `&` and newlines that are outside
+// quotes: inside quotes they are ordinary file-name characters. An unbalanced
+// quote keeps the rest of the text together, which only ever makes the later
+// checks see more of the command, never less.
+func splitStatements(command string) []string {
+	var statements []string
+	var current strings.Builder
+	var quote rune
+	for _, r := range command {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+			current.WriteRune(r)
+		case r == '"' || r == '\'':
+			quote = r
+			current.WriteRune(r)
+		case r == ';' || r == '|' || r == '&' || r == '\n':
+			statements = append(statements, current.String())
+			current.Reset()
+		default:
+			current.WriteRune(r)
+		}
+	}
+	return append(statements, current.String())
+}
+
 // overwriteStatementNamesFile reports whether any single statement of the
 // command is a copy/move whose destination names a file. Each statement is
 // judged on its own, so a harmless statement chained after a move is not
 // mistaken for the move's destination, and a move later in the chain is
 // still examined.
 func overwriteStatementNamesFile(command string) bool {
-	statements := strings.FieldsFunc(command, func(r rune) bool { return r == ';' || r == '|' || r == '&' || r == '\n' })
-	for _, statement := range statements {
+	for _, statement := range splitStatements(command) {
 		if containsAny(tokenize(statement), overwriteVerbs) && hasFileDestination(statement) {
 			return true
 		}
@@ -198,6 +228,7 @@ func firstOutOfWorkspaceAbsolutePath(command, workspaceRoot string) (string, boo
 	}
 	root := normalizeWindowsPath(workspaceRoot)
 	for _, match := range reAbsoluteWindowsPath.FindAllString(command, -1) {
+		match = strings.Trim(match, `"'`)
 		normalized := normalizeWindowsPath(match)
 		if !isWithinRoot(root, normalized) {
 			return match, true
