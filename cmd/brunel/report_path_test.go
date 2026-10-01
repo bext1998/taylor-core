@@ -54,3 +54,32 @@ func TestRelativeReportPathIsInsideWorkspace(t *testing.T) {
 		t.Fatalf("report not written inside the workspace: %v", err)
 	}
 }
+
+// The same directory reached through a symlink is still inside the
+// workspace; rejecting it would turn a valid path into E_PATH_ESCAPE.
+func TestAbsoluteReportPathThroughSymlinkedWorkspaceIsAccepted(t *testing.T) {
+	real := t.TempDir()
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Skipf("cannot create a directory symlink here: %v", err)
+	}
+	h := newHarness(t, terminals{}, "")
+	h.root = alias
+	code := runCLI([]string{"fix the bug", "--report", filepath.Join(alias, "out.json"), "--model", "anthropic/claude-x"}, h.env)
+	if code != exitOK {
+		t.Fatalf("exit = %d, stderr = %s", code, h.stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(real, "out.json")); err != nil {
+		t.Fatalf("report not written inside the workspace: %v", err)
+	}
+}
+
+// Resolving aliases must not let a path walk out of the workspace.
+func TestAbsoluteReportPathOutsideStillRejectedAfterResolving(t *testing.T) {
+	h := newHarness(t, terminals{}, "")
+	outside := filepath.Join(t.TempDir(), "out.json")
+	code := runCLI([]string{"fix the bug", "--report", outside, "--model", "anthropic/claude-x"}, h.env)
+	if code != exitFailed || !strings.Contains(h.stderr.String(), "E_PATH_ESCAPE") {
+		t.Fatalf("exit = %d, stderr = %q", code, h.stderr.String())
+	}
+}

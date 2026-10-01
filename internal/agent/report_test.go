@@ -287,3 +287,45 @@ func TestReportWithoutToolsHasNoDiffNote(t *testing.T) {
 		t.Fatalf("RemainingRisks = %q, want none", rep.RemainingRisks)
 	}
 }
+
+// A key shape the pattern-based masking does not know; only the exact match
+// against the injected credential can remove it, and that match fails if the
+// key is cut in half first.
+const oddKey = "ZZtopKEY0123456789abcdefGHIJKLMN"
+
+func withKey(r *Runtime) { r.credential = pirpc.OpenRouterCredential(oddKey) }
+
+func leaksKeyFragment(text string) bool {
+	return strings.Contains(text, oddKey[:10]) || strings.Contains(text, oddKey[len(oddKey)-10:])
+}
+
+// The summary keeps only the tail of the output; the key must be masked
+// before that cut, not after, or its end can survive.
+func TestReportSummaryMasksKeyBeforeTruncating(t *testing.T) {
+	out := oddKey + strings.Repeat("x", 190)
+	events := finish(
+		toolStart("1", "run_powershell", `{"command":"echo"}`),
+		toolEnd("1", "run_powershell", `{"tool":"run_powershell","run":{"stdout":"`+out+`","stderr":"","exit_code":0,"truncated":false}}`),
+	)
+	rep, _ := runWith(t, t.TempDir(), events, withKey)
+	if len(rep.Verifications) != 1 || leaksKeyFragment(rep.Verifications[0].Summary) {
+		t.Fatalf("Verifications = %+v, a piece of the key survived the truncation", rep.Verifications)
+	}
+}
+
+// Same for the diff, whose size limit can fall in the middle of a key.
+func TestReportDiffMasksKeyBeforeTruncating(t *testing.T) {
+	dir := newRepo(t)
+	// Try several alignments so the size limit lands inside the key for at
+	// least one of them whichever way the diff header is sized.
+	for pad := maxDiffBytes - 220; pad < maxDiffBytes-100; pad += 7 {
+		content := strings.Repeat("a", pad) + oddKey + strings.Repeat("b", 400) + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "big.txt"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		diff, _ := workspaceDiffFact(dir, []string{"big.txt"}, oddKey)
+		if leaksKeyFragment(diff) {
+			t.Fatalf("pad %d: a piece of the key survived the diff truncation", pad)
+		}
+	}
+}

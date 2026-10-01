@@ -39,6 +39,10 @@ type toolFacts struct {
 	// approvalDeclined is set when a call failed because the user declined
 	// (or no approval channel existed): spec §8 makes such a run incomplete.
 	approvalDeclined bool
+	// secret is the credential handed to Pi. Output is masked with it before
+	// it is shortened: cutting first can split a key so that neither the
+	// exact match nor the key-format patterns recognise what is left.
+	secret string
 }
 
 type toolCall struct {
@@ -96,7 +100,7 @@ func (f *toolFacts) end(id, name string, isError bool, details json.RawMessage, 
 		f.verified = append(f.verified, completion.Verification{
 			Command:  args.Command,
 			ExitCode: res.Run.ExitCode,
-			Summary:  summarizeOutput(res.Run.Stdout, res.Run.Stderr),
+			Summary:  summarizeOutput(redact.Secrets(res.Run.Stdout, f.secret), redact.Secrets(res.Run.Stderr, f.secret)),
 		})
 	}
 }
@@ -178,8 +182,8 @@ func (r *Runtime) applyFacts(rep *completion.Report, st *runState) {
 	}
 
 	if f.started > 0 {
-		diff, note := workspaceDiffFact(r.workspaceRoot, f.modified)
-		rep.Diff = redact.Secrets(diff, secret)
+		diff, note := workspaceDiffFact(r.workspaceRoot, f.modified, secret)
+		rep.Diff = diff
 		if note != "" {
 			rep.RemainingRisks = append(rep.RemainingRisks, note)
 		}
@@ -219,7 +223,7 @@ func workspaceDirty(root string) bool {
 // workspaceDiffFact returns the diff of the work tree against HEAD plus a
 // diff of each file the agent created that git does not track yet. A note is
 // returned when no diff could be taken or it was cut short.
-func workspaceDiffFact(root string, modified []string) (diff, note string) {
+func workspaceDiffFact(root string, modified []string, secret string) (diff, note string) {
 	if _, err := runGit(root, false, "rev-parse", "--is-inside-work-tree"); err != nil {
 		return "", noGitDiffMessage
 	}
@@ -251,7 +255,8 @@ func workspaceDiffFact(root string, modified []string) (diff, note string) {
 		}
 	}
 
-	diff = b.String()
+	// Mask the whole diff first, then bound its size (see toolFacts.secret).
+	diff = redact.Secrets(b.String(), secret)
 	if len(diff) > maxDiffBytes {
 		cut := diff[:maxDiffBytes]
 		for !utf8.ValidString(cut) {

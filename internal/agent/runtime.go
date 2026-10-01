@@ -118,6 +118,7 @@ type runState struct {
 func (r *Runtime) Run(ctx context.Context, task string, sink EventSink) (*completion.Report, error) {
 	started := r.now()
 	st := &runState{task: task, started: started, dirtyAtStart: workspaceDirty(r.workspaceRoot)}
+	st.facts.secret = r.credential.APIKey
 	r.sink = sink
 
 	// Resolve the Brunel executable path for the extension (BRUNEL_EXE).

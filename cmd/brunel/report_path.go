@@ -20,9 +20,9 @@ import (
 func resolveReportPath(bound *workspace.Workspace, root, path string) (string, error) {
 	rel := path
 	if filepath.IsAbs(path) {
-		r, err := filepath.Rel(root, path)
-		if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
-			return "", codedError{workspace.ErrPathEscape.Code, "--report path is outside the workspace"}
+		r, err := relativeToRoot(root, path)
+		if err != nil {
+			return "", err
 		}
 		rel = r
 	}
@@ -39,4 +39,26 @@ func resolveReportPath(bound *workspace.Workspace, root, path string) (string, e
 		return "", codedError{"E_REPORT_WRITE", "cannot inspect the --report path"}
 	}
 	return final, nil
+}
+
+// relativeToRoot expresses an absolute --report path relative to the
+// workspace root. Both sides are first resolved to their real location: the
+// root has been (workspace.Bind), and the same directory can be reached as
+// a symlink or an 8.3 short name, which a plain string comparison would take
+// for a different place. The target itself may not exist yet, so only its
+// parent directory is resolved.
+func relativeToRoot(root, path string) (string, error) {
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", codedError{workspace.ErrWorkspaceInvalid.Code, "cannot resolve the workspace root"}
+	}
+	realParent, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		return "", codedError{"E_REPORT_WRITE", "the --report directory does not exist"}
+	}
+	rel, err := filepath.Rel(realRoot, filepath.Join(realParent, filepath.Base(path)))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", codedError{workspace.ErrPathEscape.Code, "--report path is outside the workspace"}
+	}
+	return rel, nil
 }
