@@ -14,6 +14,10 @@ import (
 // workspaceDiffTimeout bounds one git diff; a variable so a test can shorten it.
 var workspaceDiffTimeout = 30 * time.Second
 
+// workspaceDiff returns `git diff -- <pathspec>`: the unstaged changes of
+// tracked files. Staged changes and untracked new files are not included;
+// the CompletionReport takes its own diff at the end of a run (internal/agent),
+// including files the agent created, and does not depend on this tool.
 func workspaceDiff(ctx context.Context, r filetools.Resolver, root, path string) (string, error) {
 	// Resolve before spawning git so a path escape is rejected without any I/O.
 	if _, err := r.Resolve(path); err != nil {
