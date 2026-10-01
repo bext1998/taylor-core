@@ -73,10 +73,43 @@ func (f *fakePiProcess) Close() { f.terminate() }
 
 // recordingSink captures the events the run loop emits for display.
 type recordingSink struct {
+	mu     sync.Mutex
 	events []Event
 }
 
-func (s *recordingSink) Emit(e Event) { s.events = append(s.events, e) }
+func (s *recordingSink) Emit(e Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, e)
+}
+
+// saw reports whether an event of the kind has been emitted so far; it is safe
+// to call while the run is still going.
+func (s *recordingSink) saw(kind EventKind) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.events {
+		if e.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// waitUntil polls cond until it holds. The cancel tests use it instead of a
+// fixed sleep: how long a run takes to reach the event loop depends on the
+// machine (it starts with a git status), and a fixed wait cancelled it early
+// on slow CI runners.
+func waitUntil(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
 
 func kindsOf(s *recordingSink) []EventKind {
 	out := make([]EventKind, len(s.events))
@@ -398,8 +431,10 @@ func TestRunCancelAfterAppendFailure(t *testing.T) {
 		report, runErr = r.Run(ctx, "task", sink)
 		close(done)
 	}()
-	// Let the run process the text delta (append will fail), then cancel.
-	time.Sleep(50 * time.Millisecond)
+	// Wait until the run has processed the text delta (its append fails right
+	// after the emit, in the same goroutine), then cancel.
+	waitUntil(t, "the run to process the text delta", func() bool { return sink.saw(EventAssistantDelta) })
+	time.Sleep(10 * time.Millisecond)
 	cancel()
 	select {
 	case <-done:
@@ -520,8 +555,9 @@ func TestRunAbortsOnContextCancel(t *testing.T) {
 		_, _ = r.Run(ctx, "task", sink)
 		close(done)
 	}()
-	// Let the run acknowledge the prompt, then cancel.
-	time.Sleep(50 * time.Millisecond)
+	// Wait until the run is in its event loop (it has processed the text
+	// delta), then cancel.
+	waitUntil(t, "the run to reach its event loop", func() bool { return sink.saw(EventAssistantDelta) })
 	cancel()
 	select {
 	case <-done:
