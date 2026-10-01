@@ -239,7 +239,29 @@ func TestPSRunner_OutputTruncated(t *testing.T) {
 // TestPSRunner_Timeout_KillsProcessTree covers AC-10 / TC-EXEC: a
 // grandchild process must die along with its parent when the tool call
 // times out, not just the directly-spawned pwsh.
+//
+// The runner's clock starts when the parent pwsh starts, and the grandchild
+// is a second pwsh cold start (about 0.9s on an idle machine, much more on a
+// loaded CI runner). If the timeout fires before the grandchild has written
+// anything, nothing was tested: the premise (a live grandchild) never held.
+// That attempt is retried with a longer timeout instead of being reported as
+// a Job Object failure. A grandchild that started and is still advancing after
+// the timeout always fails the test.
 func TestPSRunner_Timeout_KillsProcessTree(t *testing.T) {
+	for _, timeout := range []time.Duration{2 * time.Second, 5 * time.Second, 12 * time.Second} {
+		if started := runTimeoutKillsProcessTree(t, timeout); started {
+			return
+		}
+		t.Logf("grandchild had not started within %v; retrying with a longer timeout", timeout)
+	}
+	t.Fatalf("grandchild never wrote a counter value even with a 12s timeout; process tree may not have started")
+}
+
+// runTimeoutKillsProcessTree runs one attempt and reports whether the
+// grandchild was seen running before the timeout. It fails the test if the
+// timeout does not return promptly or if a started grandchild survives.
+func runTimeoutKillsProcessTree(t *testing.T, timeout time.Duration) bool {
+	t.Helper()
 	r := newTestRunner(t)
 	counterPath := filepath.Join(t.TempDir(), "counter.txt")
 	t.Setenv("BRUNEL_TEST_COUNTER_FILE", counterPath)
@@ -256,7 +278,7 @@ $psi.UseShellExecute = $false
 Start-Sleep -Seconds 30
 `
 	opts := baseOptions(script)
-	opts.Timeout = 2 * time.Second
+	opts.Timeout = timeout
 
 	start := time.Now()
 	_, err := r.Run(context.Background(), opts)
@@ -265,19 +287,20 @@ Start-Sleep -Seconds 30
 	if !errors.Is(err, ErrToolTimeout) {
 		t.Fatalf("Run() error = %v, want E_TOOL_TIMEOUT", err)
 	}
-	if elapsed > 10*time.Second {
-		t.Fatalf("Run() took %v, expected to return shortly after the %v timeout", elapsed, opts.Timeout)
+	if elapsed > timeout+8*time.Second {
+		t.Fatalf("Run() took %v, expected to return shortly after the %v timeout", elapsed, timeout)
 	}
 
 	v0, ok := readCounter(t, counterPath)
 	if !ok {
-		t.Fatalf("grandchild never wrote a counter value; process tree may not have started")
+		return false
 	}
 	time.Sleep(700 * time.Millisecond)
 	v1, _ := readCounter(t, counterPath)
 	if v1 != v0 {
 		t.Fatalf("counter still advancing after timeout (v0=%d v1=%d): grandchild survived Job Object termination", v0, v1)
 	}
+	return true
 }
 
 func readCounter(t *testing.T, path string) (int, bool) {
