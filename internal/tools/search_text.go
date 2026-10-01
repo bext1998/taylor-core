@@ -129,9 +129,15 @@ func readTextFile(path string) ([]byte, bool, error) {
 	if bytes.IndexByte(first, 0) >= 0 {
 		return nil, true, nil
 	}
-	rest, err := io.ReadAll(io.LimitReader(file, maxSearchFileBytes))
+	// Read one byte past what is left of the budget: a file that grew after the
+	// size check is then recognised as too large and skipped, instead of being
+	// searched truncated.
+	rest, err := io.ReadAll(io.LimitReader(file, int64(maxSearchFileBytes-len(first))+1))
 	if err != nil {
 		return nil, false, err
+	}
+	if len(first)+len(rest) > maxSearchFileBytes {
+		return nil, true, nil
 	}
 	return append(first, rest...), false, nil
 }

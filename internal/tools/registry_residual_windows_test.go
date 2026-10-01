@@ -58,12 +58,11 @@ func TestRegistryPowerShellCwdEscapeIsRejected(t *testing.T) {
 // that the generous default limit would have let finish (#69 item 9).
 func TestRegistryPowerShellTimeoutSecIsPassedToTheRunner(t *testing.T) {
 	registry := powerShellRegistry(t, t.TempDir(), nil)
-	start := time.Now()
-	_, err := registry.Call(context.Background(), "run_powershell", json.RawMessage(`{"command":"Start-Sleep -Seconds 20","timeout_sec":1}`))
+	// The default limit is longer than the command, so only timeout_sec can
+	// make it time out: if the parameter were ignored the command would finish.
+	registry.ExecLimits.DefaultTimeout = time.Minute
+	_, err := registry.Call(context.Background(), "run_powershell", json.RawMessage(`{"command":"Start-Sleep -Seconds 5","timeout_sec":1}`))
 	if ErrorCode(err) != "E_TOOL_TIMEOUT" {
 		t.Fatalf("timeout code = %q, want E_TOOL_TIMEOUT (err = %v)", ErrorCode(err), err)
-	}
-	if elapsed := time.Since(start); elapsed > 15*time.Second {
-		t.Fatalf("returned after %v: timeout_sec was not applied (the default limit is 10s)", elapsed)
 	}
 }

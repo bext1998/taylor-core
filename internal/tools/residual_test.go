@@ -166,3 +166,21 @@ func TestWorkspaceDiffOutputExcludesStderr(t *testing.T) {
 		t.Fatalf("diff text = %q: it must hold the diff and none of git's stderr", out)
 	}
 }
+
+// readTextFile's own limit (a file that grew after the size check) must hold
+// exactly: the budget includes the first block already read, and an
+// over-limit file is skipped rather than searched truncated (#69 item 5).
+func TestReadTextFileHonoursTheExactByteBudget(t *testing.T) {
+	dir := t.TempDir()
+	atLimit := filepath.Join(dir, "at.txt")
+	over := filepath.Join(dir, "over.txt")
+	writeTestFile(t, atLimit, strings.Repeat("a", maxSearchFileBytes))
+	writeTestFile(t, over, strings.Repeat("a", maxSearchFileBytes+1))
+
+	if data, skipped, err := readTextFile(atLimit); err != nil || skipped || len(data) != maxSearchFileBytes {
+		t.Fatalf("file of exactly the limit: len=%d skipped=%v err=%v", len(data), skipped, err)
+	}
+	if data, skipped, err := readTextFile(over); err != nil || !skipped || data != nil {
+		t.Fatalf("file one byte over the limit: len=%d skipped=%v err=%v, want it skipped", len(data), skipped, err)
+	}
+}
