@@ -39,6 +39,8 @@ type loginHarness struct {
 	// secretReads counts hidden-prompt reads, so a test can tell which input
 	// path supplied the key.
 	secretReads int
+	// secretErr, when set, is what the hidden prompt returns instead of a key.
+	secretErr error
 }
 
 func newLoginHarness(stdin string, tty bool, secret string) *loginHarness {
@@ -51,6 +53,9 @@ func newLoginHarness(stdin string, tty bool, secret string) *loginHarness {
 		credentialWriter: h.writer,
 		readSecret: func() (string, error) {
 			h.secretReads++
+			if h.secretErr != nil {
+				return "", h.secretErr
+			}
 			return secret, nil
 		},
 	}
@@ -125,6 +130,25 @@ func TestLoginRejectsEmptyKeyAndKeepsExistingOne(t *testing.T) {
 		if !strings.Contains(h.stderr.String(), "E_CONFIG_CREDENTIAL") {
 			t.Errorf("%s: stderr %q lacks E_CONFIG_CREDENTIAL", name, h.stderr.String())
 		}
+	}
+}
+
+// If the terminal cannot be read the command must fail without storing
+// anything, and the error must not carry the partial input.
+func TestLoginTerminalReadFailureStoresNothing(t *testing.T) {
+	h := newLoginHarness("", true, loginTestKey)
+	h.secretErr = errors.New("The handle is invalid.")
+	if code := runCLI([]string{"login"}, h.env); code != exitFailed {
+		t.Fatalf("exit = %d, want %d", code, exitFailed)
+	}
+	if len(h.writer.saved) != 0 {
+		t.Fatalf("a key was stored after a failed read: %q", h.writer.saved)
+	}
+	if !strings.Contains(h.stderr.String(), "E_CONFIG_CREDENTIAL") {
+		t.Fatalf("stderr %q lacks E_CONFIG_CREDENTIAL", h.stderr.String())
+	}
+	if strings.Contains(h.output(), loginTestKey) {
+		t.Fatalf("output echoes the key: %q", h.output())
 	}
 }
 
