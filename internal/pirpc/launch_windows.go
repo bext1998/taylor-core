@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -147,7 +149,7 @@ func startPiProcess(_ context.Context, piPath string, args []string, env []strin
 		syscall.CloseHandle(stdoutWrite)
 		syscall.CloseHandle(stderrRead)
 		syscall.CloseHandle(stderrWrite)
-		return nil, codeError(ErrPiRuntimeRequired.Code, "failed to start the pi subprocess", err)
+		return nil, codeError(ErrPiRuntimeRequired.Code, "failed to start the pi subprocess: "+err.Error(), err)
 	}
 
 	// Bind the whole process tree to the Job Object before resuming.
@@ -455,6 +457,10 @@ func buildCmdLine(piPath string, args []string) string {
 func buildEnvBlock(env []string) ([]uint16, error) {
 	var u16 []uint16
 	for _, e := range env {
+		if strings.IndexByte(e, 0) >= 0 {
+			// Name only the position, never the entry: it may hold a key.
+			return nil, errors.New("environment entry contains NUL")
+		}
 		enc := utf16.Encode([]rune(e))
 		u16 = append(u16, enc...)
 		u16 = append(u16, 0)

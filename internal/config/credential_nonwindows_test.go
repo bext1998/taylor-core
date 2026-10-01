@@ -21,3 +21,9 @@ func TestPlatformCredentialWriterUnsupported(t *testing.T) {
 		t.Fatalf("SetOpenRouterAPIKey() error = %v, want E_UNSUPPORTED_PLATFORM", err)
 	}
 }
+
+func TestPlatformCredentialWriterDeleteUnsupported(t *testing.T) {
+	if err := NewPlatformCredentialWriter().DeleteOpenRouterAPIKey(); !errors.Is(err, ErrUnsupportedPlatform) {
+		t.Fatalf("DeleteOpenRouterAPIKey() error = %v, want E_UNSUPPORTED_PLATFORM", err)
+	}
+}

@@ -59,6 +59,19 @@ Brunel 不自行實作 provider 選擇、SSE streaming、tool-call probe 或重�
 
 API key 一律優先存於 Windows Credential Manager，並在啟動 Pi 子行程時經環境變數注入（例如 `OPENROUTER_API_KEY`，比照 Pi 自己已支援的憑證機制），不會寫入任何專案設定檔。注入時 key 會與其來源 provider 綁定，provider 不符則拒絕注入。目前 Brunel 只從 Credential Manager（target `Brunel/OpenRouter`）解析 **OpenRouter** key，而且只有模型實際走 OpenRouter 時才需要它；其他 provider 的憑證需由使用者自行設定，交由 Pi 既有的 credential 探索機制（`settings.json` 或既有環境變數）處理。
 
+### 設定 OpenRouter key
+
+```powershell
+brunel login            # 在終端機以隱藏輸入貼上 key
+brunel logout           # 移除已存的 key
+```
+
+- 比照 Pi 的 `/login`、`/logout`：`brunel login [openrouter]` 只處理 OpenRouter；其他 provider 請用 Pi 自己的 `/login`。
+- key 只從隱藏提示（終端機）或 stdin 第一行（管線，例如從密碼管理器的輸出接入）讀取，**不接受參數**，也不會被印出或寫入 Session，避免留在 shell 歷史與程序清單。不要把 key 寫進專案檔或貼進對話。
+- 檢查是否已存入：`cmdkey /list:Brunel/OpenRouter`（只列出條目，不顯示 key）。更換 key 再執行一次 `brunel login`。
+- 用 `cmdkey` 或 Windows 認證管理員圖形介面存入的 key（UTF-16）也能讀取；若存入內容無法解讀為文字，Brunel 會在啟動前以 `E_CONFIG_CREDENTIAL` 拒絕並提示重新執行 `brunel login`。
+- 若真的要把單字 `login` 當成任務，寫 `brunel -- login`。
+
 ## 開發指引
 
 - Coding Agent 先閱讀 `AGENTS.md`、`MAZE_PROJECT.md`、`STATUS.md` 與 `NEXT_ACTION.md`。

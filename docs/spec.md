@@ -112,6 +112,7 @@ Brunel 與 Taylor、Watt 工程上完全獨立，不 import、偵測、呼叫或
 - `--mode workspace|readonly`，預設 `workspace`。
 - `--name <name>`、`--resume <name|id>`、`--report <path>`、`--model <id>`。
 - `--report` 不使程式進入 TUI；report 仍於任務終態寫出。
+- `brunel login [openrouter]`／`brunel logout [openrouter]`：將 OpenRouter key 存入或移出 Windows Credential Manager（target `Brunel/OpenRouter`），比照 Pi 的 `/login`、`/logout`。key 只從終端機隱藏提示或 stdin 第一行讀取，不接受參數，不得被輸出、記錄或寫入 Session；其他 provider 不在範圍內，仍由 Pi 自行處理（Issue #65）。僅當第一個參數恰為 `login` 或 `logout` 時視為此指令，`brunel -- login` 仍為任務。
 
 ### 4.2 TUI 契約 [FROZEN]
 

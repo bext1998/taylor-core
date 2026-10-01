@@ -36,6 +36,8 @@ const errInvalidArgument = "E_INVALID_ARGUMENT"
 const usageText = `Usage:
   brunel [flags]              start the interactive TUI (requires a TTY)
   brunel [flags] "<task>"     run one task in plain-text mode
+  brunel login [openrouter]   save your OpenRouter key in Windows Credential Manager
+  brunel logout [openrouter]  remove it (see "brunel login --help")
 
 Flags (may appear before or after the task):
   --mode workspace|readonly   default workspace; readonly rejects writes and PowerShell
@@ -170,7 +172,11 @@ type cliEnv struct {
 	executable     func() (string, error)
 	userProfile    string // empty: the real profile
 	credentials    config.CredentialSource
-	sessionRoot    string // empty: the default store root
+	// credentialWriter backs `brunel login` / `logout`; nil: the platform one.
+	credentialWriter config.CredentialWriter
+	// readSecret reads one line from the terminal without echo.
+	readSecret  func() (string, error)
+	sessionRoot string // empty: the default store root
 	// newRunner builds the agent for one CLI invocation.
 	newRunner func(launch pirpc.LaunchOptions, cred pirpc.Credential, s *session.Session, root, mode, exe string) agentRunner
 	// runTUI runs the interactive TUI until the user quits.
@@ -201,6 +207,7 @@ func defaultCLIEnv(stdin io.Reader, stdout, stderr io.Writer, tty terminals) cli
 		tty:        tty,
 		getwd:      os.Getwd,
 		executable: os.Executable,
+		readSecret: readTerminalSecret,
 		newRunner: func(launch pirpc.LaunchOptions, cred pirpc.Credential, s *session.Session, root, mode, exe string) agentRunner {
 			return agent.NewRuntime(launch, cred, s, root, mode, exe)
 		},
@@ -220,6 +227,9 @@ func defaultCLIEnv(stdin io.Reader, stdout, stderr io.Writer, tty terminals) cli
 
 // runCLI is the interactive / one-shot entry point (spec.md §4.1).
 func runCLI(args []string, env cliEnv) int {
+	if command, ok := authCommand(args); ok {
+		return runAuth(command, args[1:], env)
+	}
 	opts, err := parseCLI(args)
 	if opts.help {
 		_, _ = io.WriteString(env.stdout, usageText)

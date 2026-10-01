@@ -44,6 +44,9 @@ type CredentialSource interface {
 
 type CredentialWriter interface {
 	SetOpenRouterAPIKey(string) error
+	// DeleteOpenRouterAPIKey removes the stored key. It returns
+	// ErrCredentialNotFound when there is nothing to remove.
+	DeleteOpenRouterAPIKey() error
 }
 
 type Loader struct {
