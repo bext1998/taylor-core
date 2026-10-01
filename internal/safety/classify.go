@@ -31,7 +31,7 @@ func (g *Gate) classify(call ToolCall) (Risk, string) {
 // test plan only requires the listed representative commands to classify
 // correctly, not language completeness.
 var (
-	deleteVerbs      = map[string]bool{"remove-item": true, "ri": true, "del": true, "erase": true, "rd": true, "rmdir": true}
+	deleteVerbs      = map[string]bool{"remove-item": true, "ri": true, "rm": true, "del": true, "erase": true, "rd": true, "rmdir": true}
 	deleteForceFlags = map[string]bool{"-recurse": true, "-force": true}
 	clearVerbs       = map[string]bool{"clear-content": true, "clear-item": true}
 	overwriteVerbs   = map[string]bool{"move-item": true, "copy-item": true}
@@ -46,7 +46,10 @@ var (
 	// Matches a Windows drive-letter absolute path (either separator) or
 	// a UNC share anywhere in the command text, e.g. C:\Users\x,
 	// C:/Users/x or \\server\share.
-	reAbsoluteWindowsPath = regexp.MustCompile(`(?i)[A-Z]:[\\/][^\s"'|]*|\\\\[^\s"'|]+`)
+	//
+	// A comma or semicolon ends a path: `C:\ws\a.txt,C:\Windows\win.ini` is
+	// two paths in one argument list, and each must be checked on its own.
+	reAbsoluteWindowsPath = regexp.MustCompile(`(?i)[A-Z]:[\\/][^\s"'|,;]*|\\\\[^\s"'|,;]+`)
 )
 
 // classifyPowerShell returns (reason, true) if command matches one of the
@@ -56,6 +59,12 @@ func classifyPowerShell(command, workspaceRoot string) (string, bool) {
 
 	if containsAny(tokens, deleteVerbs) && containsAny(tokens, deleteForceFlags) {
 		return "recursive or forced delete", true
+	}
+	// A wildcard delete removes many files at once, the same bulk effect the
+	// move/copy check below already confirms. The whole command is searched,
+	// so `Get-ChildItem *.tmp | Remove-Item` is caught too.
+	if containsAny(tokens, deleteVerbs) && strings.ContainsAny(command, "*?") {
+		return "bulk delete (wildcard)", true
 	}
 	if containsAny(tokens, clearVerbs) {
 		return "clears file content", true
@@ -69,7 +78,7 @@ func classifyPowerShell(command, workspaceRoot string) (string, bool) {
 	// exists, so any copy-item/move-item whose destination argument names
 	// a file (not a directory glob ending in a separator) is treated as
 	// a potential overwrite and confirmed.
-	if containsAny(tokens, overwriteVerbs) && hasFileDestination(command) {
+	if overwriteStatementNamesFile(command) {
 		return "bulk move or overwrite", true
 	}
 
@@ -135,6 +144,21 @@ func isSeparator(r rune) bool {
 func containsAny(tokens map[string]bool, set map[string]bool) bool {
 	for t := range set {
 		if tokens[t] {
+			return true
+		}
+	}
+	return false
+}
+
+// overwriteStatementNamesFile reports whether any single statement of the
+// command is a copy/move whose destination names a file. Each statement is
+// judged on its own, so a harmless statement chained after a move is not
+// mistaken for the move's destination, and a move later in the chain is
+// still examined.
+func overwriteStatementNamesFile(command string) bool {
+	statements := strings.FieldsFunc(command, func(r rune) bool { return r == ';' || r == '|' || r == '&' || r == '\n' })
+	for _, statement := range statements {
+		if containsAny(tokenize(statement), overwriteVerbs) && hasFileDestination(statement) {
 			return true
 		}
 	}
