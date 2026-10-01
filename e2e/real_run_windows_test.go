@@ -18,7 +18,7 @@ import (
 // copies the project to a temporary workspace, runs the standard CLI
 // (`brunel "<task>" --report ...`) against a real model, and checks the
 // verification command passes, the report is complete and truthful, the
-// protected tests are untouched and the fixture source did not change.
+// test and module files are untouched (none edited, removed or added) and the fixture source did not change.
 //
 // It needs a real provider, so it is opt-in and never runs in default CI:
 //
@@ -46,11 +46,6 @@ func TestFixturesWithARealModel(t *testing.T) {
 				if out, err := exec.Command("git", append([]string{"-C", ws}, args...)...).CombinedOutput(); err != nil {
 					t.Fatalf("git %v: %v\n%s", args, err, out)
 				}
-			}
-			protected := map[string]string{}
-			for _, p := range f.ProtectedFiles {
-				data, _ := os.ReadFile(filepath.Join(ws, p))
-				protected[p] = string(data)
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
@@ -81,11 +76,8 @@ func TestFixturesWithARealModel(t *testing.T) {
 			if ok, vout := f.verifyPasses(t, ws); !ok {
 				t.Fatalf("verification fails after the run:\n%s", vout)
 			}
-			for p, before := range protected {
-				after, _ := os.ReadFile(filepath.Join(ws, p))
-				if string(after) != before {
-					t.Errorf("the run edited protected file %s", p)
-				}
+			if bad := guardViolations(t, f.project(), ws); len(bad) != 0 {
+				t.Errorf("the run touched guarded test or module files: %v", bad)
 			}
 			if hashTree(t, f.dir) != sourceBefore {
 				t.Fatal("the run changed the fixture source")
