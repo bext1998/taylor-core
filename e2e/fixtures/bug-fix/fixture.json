@@ -1,0 +1,7 @@
+{
+  "name": "bug-fix",
+  "category": "bug fix",
+  "task": "Bug report: wordcount.CountWords(\"  hello   world \") returns 6 but should return 2, and CountWords(\"\") returns 1 but should return 0. Words are separated by any run of whitespace. Fix the bug in the code and make `go test ./...` pass. Do not edit the test files.",
+  "verify": ["go", "test", "./..."],
+  "protected_files": ["wordcount_test.go"]
+}
