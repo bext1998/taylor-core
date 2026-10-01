@@ -11,6 +11,7 @@ import (
 
 	"github.com/bext1998/brunel/internal/agent"
 	"github.com/bext1998/brunel/internal/approval"
+	"github.com/bext1998/brunel/internal/completion"
 	"github.com/bext1998/brunel/internal/safety"
 )
 
@@ -129,12 +130,35 @@ func (a *ttyApprover) Confirm(ctx context.Context, p safety.ApprovalPrompt) (boo
 type relayApprover struct {
 	inner safety.Approver
 	sink  agent.EventSink
+
+	mu      sync.Mutex
+	pending *completion.ApprovalFact
+}
+
+// Pending returns the command currently waiting for an approval decision, or
+// nil. The completion report records it when a run ends with one outstanding.
+func (r *relayApprover) Pending() *completion.ApprovalFact {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.pending
+}
+
+func (r *relayApprover) setPending(p *completion.ApprovalFact) {
+	r.mu.Lock()
+	r.pending = p
+	r.mu.Unlock()
 }
 
 func (r *relayApprover) Confirm(ctx context.Context, p safety.ApprovalPrompt) (bool, error) {
 	shown := approval.SanitizeForDisplay(p.Command)
 	r.sink.Emit(agent.Event{Kind: agent.EventApprovalNeeded, Timestamp: time.Now(), Text: shown})
+	r.setPending(&completion.ApprovalFact{Command: shown, Reason: approval.SanitizeForDisplay(p.Reason)})
 	ok, err := r.inner.Confirm(ctx, p)
+	if ctx.Err() == nil {
+		// A cancelled confirmation is still unresolved; keep it as the fact
+		// the report records for the run that was cut short.
+		r.setPending(nil)
+	}
 	result := "denied: " + shown
 	if err == nil && ok {
 		result = "approved once: " + shown

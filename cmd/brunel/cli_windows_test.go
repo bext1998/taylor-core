@@ -52,6 +52,8 @@ func (f *fakeAgent) Run(_ context.Context, task string, sink agent.EventSink) (*
 
 func (f *fakeAgent) SetExtraEnv(env map[string]string) { f.env = env }
 
+func (f *fakeAgent) SetPendingApproval(func() *completion.ApprovalFact) {}
+
 type fakeBroker struct {
 	approver safety.Approver
 	closed   bool
