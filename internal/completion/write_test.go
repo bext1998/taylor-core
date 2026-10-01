@@ -68,32 +68,46 @@ func TestWriteFileMissingParentLeavesNothing(t *testing.T) {
 	}
 }
 
-// EC-5: if the process is interrupted while the report is being written, no
-// partial report may be left at the target path. The report is staged in a
-// temporary file and published in one step, so at every moment the target is
-// either absent or the complete JSON - never a prefix of it. A reader polling
-// the path while a large report is written proves that (#55).
+// EC-5 (the safety property behind "cancel while the report is written"): a
+// report must never be visible half-written. It is staged in a temporary file
+// and published in one step, so a sampled reader polling the target while a
+// large report is written may only ever see the file absent or complete -
+// never a prefix of it, and never empty. This does not interrupt the writer;
+// it checks the published state, not cancellation propagation (#55).
 func TestWriteFileNeverExposesAPartialReport(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "report.json")
-	rep := &Report{SchemaVersion: SchemaVersion, Status: StatusCompleted, Diff: strings.Repeat("x", 8<<20)}
+	want := strings.Repeat("x", 8<<20)
+	rep := &Report{SchemaVersion: SchemaVersion, Status: StatusCompleted, Diff: want}
 
-	var partial atomic.Int64
+	var violated atomic.Bool
+	var badLen, samples atomic.Int64
+	started := make(chan struct{})
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		first := true
 		for {
 			select {
 			case <-stop:
 				return
 			default:
 			}
-			if data, err := os.ReadFile(path); err == nil && !json.Valid(data) {
-				partial.Store(int64(len(data)))
+			if data, err := os.ReadFile(path); err == nil {
+				samples.Add(1)
+				if !json.Valid(data) { // includes an empty file
+					violated.Store(true)
+					badLen.Store(int64(len(data)))
+				}
+			}
+			if first {
+				first = false
+				close(started)
 			}
 		}
 	}()
+	<-started // the reader is polling before the write begins
 	err := WriteFile(path, rep)
 	close(stop)
 	<-done
@@ -101,12 +115,17 @@ func TestWriteFileNeverExposesAPartialReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	if n := partial.Load(); n != 0 {
-		t.Fatalf("a reader saw a partial report of %d bytes at the target path", n)
+	if violated.Load() {
+		t.Fatalf("a reader saw an invalid report of %d bytes at the target path", badLen.Load())
 	}
+	t.Logf("reader took %d samples of the target while the report was written", samples.Load())
 	data, err := os.ReadFile(path)
-	if err != nil || !json.Valid(data) {
-		t.Fatalf("final report is missing or invalid: %v", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Report
+	if err := json.Unmarshal(data, &got); err != nil || got.Diff != want {
+		t.Fatalf("final report is incomplete or invalid: err=%v, diff bytes=%d, want %d", err, len(got.Diff), len(want))
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
 		t.Fatalf("temporary files left behind: %v", entries)
