@@ -11,6 +11,8 @@ func Bind(string) (*Workspace, error) {
 
 func (w *Workspace) Root() string { return "" }
 
+func (w *Workspace) Identity() string { return "" }
+
 func (w *Workspace) Resolve(string) (string, error) {
 	return "", codeError("E_UNSUPPORTED_PLATFORM", "workspace resolution requires Windows", nil)
 }

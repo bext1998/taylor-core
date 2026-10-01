@@ -54,6 +54,17 @@ func Bind(root string) (*Workspace, error) {
 	return &Workspace{root: resolved, finalRoot: finalRoot, identity: identity}, nil
 }
 
+// Identity returns a stable string naming the bound directory itself (volume
+// and file index), not the path used to reach it. The host passes it to every
+// tool-call process so each fresh binding can confirm it landed on the same
+// directory the session started with (spec.md INV-5).
+func (w *Workspace) Identity() string {
+	if w == nil {
+		return ""
+	}
+	return fmt.Sprintf("%08x:%08x:%08x", w.identity.volumeSerial, w.identity.fileIndexHi, w.identity.fileIndexLo)
+}
+
 // Root returns the absolute, symlink-resolved workspace root.
 func (w *Workspace) Root() string {
 	if w == nil {

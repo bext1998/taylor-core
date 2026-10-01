@@ -46,6 +46,17 @@ function brunelMode(): "workspace" | "readonly" {
   return value;
 }
 
+// Arguments for one `brunel --taylor-tool` call. BRUNEL_WORKSPACE_ID is the
+// identity of the directory the session bound; passing it lets each fresh
+// process refuse to run if the workspace path was repointed (INV-5).
+export function toolArgs(name: string, cwd: string, mode: string, workspaceId: string | undefined): string[] {
+  const args = ["--taylor-tool", name, "--cwd", cwd, "--mode", mode];
+  if (workspaceId) {
+    args.push("--workspace-id", workspaceId);
+  }
+  return args;
+}
+
 function decodeToolResponse(stdout: string): ToolResponse {
   return JSON.parse(stdout) as ToolResponse;
 }
@@ -58,7 +69,7 @@ function assertToolOk(response: ToolResponse): ToolResponse {
 }
 
 async function invokeTool(name: string, params: Record<string, unknown>, signal: AbortSignal | undefined, ctx: ExtensionContext) {
-  const invocation = execFileAsync(brunelExecutable(), ["--taylor-tool", name, "--cwd", ctx.cwd, "--mode", brunelMode()], {
+  const invocation = execFileAsync(brunelExecutable(), toolArgs(name, ctx.cwd, brunelMode(), process.env.BRUNEL_WORKSPACE_ID), {
     cwd: ctx.cwd,
     encoding: "utf8",
     maxBuffer: maxResponseBytes,
