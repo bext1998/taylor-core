@@ -74,7 +74,12 @@ func NewRuntime(opts pirpc.LaunchOptions, cred pirpc.Credential, s *session.Sess
 // uses it to hand down the approval channel (internal/approval). It cannot
 // override BRUNEL_EXE or BRUNEL_MODE, which Run always sets itself.
 func (r *Runtime) SetExtraEnv(env map[string]string) {
-	r.extraEnv = env
+	if r.extraEnv == nil {
+		r.extraEnv = make(map[string]string, len(env))
+	}
+	for k, v := range env {
+		r.extraEnv[k] = v
+	}
 }
 
 // SetPendingApproval supplies the source of the report's pending_approval

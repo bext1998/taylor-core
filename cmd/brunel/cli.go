@@ -348,12 +348,18 @@ func prepareRun(ctx context.Context, opts cliOptions, env cliEnv) (*runSetup, er
 		return nil, err
 	}
 
+	runner := env.newRunner(launch, cred, sess, root, mode, exe)
+	// Every tool call re-binds the workspace in its own process; hand down
+	// the identity of the directory bound here so a later call can tell if
+	// the path was repointed meanwhile (INV-5).
+	runner.SetExtraEnv(map[string]string{"BRUNEL_WORKSPACE_ID": bound.Identity()})
+
 	return &runSetup{
 		root:    root,
 		mode:    mode,
 		model:   model,
 		session: sess,
-		agent:   env.newRunner(launch, cred, sess, root, mode, exe),
+		agent:   runner,
 
 		reportPath: reportPath,
 	}, nil

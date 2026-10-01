@@ -43,3 +43,18 @@ test(
     );
   },
 );
+
+// INV-5: each tool call is a fresh brunel process, so the session's workspace
+// identity has to ride along on every call.
+test(
+  "passes the session workspace identity to every tool call when the host provides one",
+  { skip: dependencyMissing && `typebox not installed (run npm ci): ${dependencyMissing}` },
+  async () => {
+    const { toolArgs } = await import("./taylor-tools.ts");
+    assert.deepEqual(toolArgs("list_files", "C:/ws", "workspace", "0000abcd:00000001:00000002"), [
+      "--taylor-tool", "list_files", "--cwd", "C:/ws", "--mode", "workspace",
+      "--workspace-id", "0000abcd:00000001:00000002",
+    ]);
+    assert.ok(!toolArgs("list_files", "C:/ws", "workspace", undefined).includes("--workspace-id"));
+  },
+);

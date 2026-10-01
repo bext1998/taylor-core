@@ -50,7 +50,14 @@ func (f *fakeAgent) Run(_ context.Context, task string, sink agent.EventSink) (*
 	return f.report, f.err
 }
 
-func (f *fakeAgent) SetExtraEnv(env map[string]string) { f.env = env }
+func (f *fakeAgent) SetExtraEnv(env map[string]string) {
+	if f.env == nil {
+		f.env = map[string]string{}
+	}
+	for k, v := range env {
+		f.env[k] = v
+	}
+}
 
 func (f *fakeAgent) SetPendingApproval(func() *completion.ApprovalFact) {}
 
@@ -310,7 +317,7 @@ func TestApprovalChannelOnlyWithTTY(t *testing.T) {
 	if code := runCLI([]string{"--model", "anthropic/x", "task"}, h.env); code != exitOK {
 		t.Fatalf("exit = %d: %s", code, h.stderr.String())
 	}
-	if h.broker != nil || h.agent.env != nil {
+	if h.broker != nil || h.agent.env["BRUNEL_APPROVAL_PIPE"] != "" {
 		t.Fatal("approval channel opened without a TTY")
 	}
 }

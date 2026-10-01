@@ -39,8 +39,12 @@ var taylorToolNames = map[string]struct{}{
 }
 
 type taylorToolConfig struct {
-	name           string
-	cwd            string
+	name string
+	cwd  string
+	// workspaceID is the identity of the directory the session bound (see
+	// workspace.Identity). When set, a tool call whose own binding differs is
+	// refused: the path was repointed between calls (INV-5).
+	workspaceID    string
 	mode           string
 	timeout        time.Duration
 	maxProcesses   uint
@@ -125,6 +129,7 @@ func parseTaylorToolConfig(args []string, diagnostics io.Writer) (taylorToolConf
 	flags.SetOutput(diagnostics)
 	flags.StringVar(&config.name, "taylor-tool", "", "run a frozen Taylor tool")
 	flags.StringVar(&config.cwd, "cwd", "", "workspace directory")
+	flags.StringVar(&config.workspaceID, "workspace-id", "", "identity of the session's workspace directory")
 	flags.StringVar(&config.mode, "mode", config.mode, "workspace or readonly")
 	flags.DurationVar(&config.timeout, "timeout", config.timeout, "PowerShell timeout")
 	flags.UintVar(&config.maxProcesses, "max-processes", config.maxProcesses, "PowerShell process limit")
@@ -170,6 +175,10 @@ func runTaylorTool(ctx context.Context, config taylorToolConfig, input io.Reader
 			code = workspace.ErrWorkspaceInvalid.Code
 		}
 		return writeTaylorToolFailure(output, config.name, code)
+	}
+
+	if config.workspaceID != "" && workspaceBinding.Identity() != config.workspaceID {
+		return writeTaylorToolFailure(output, config.name, workspace.ErrWorkspaceUnbound.Code)
 	}
 
 	mode := safety.ModeWorkspace
