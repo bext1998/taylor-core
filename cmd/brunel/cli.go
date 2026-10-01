@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -44,7 +45,8 @@ Flags (may appear before or after the task):
   --model <id>                model passed verbatim to pi --model, e.g. openrouter/<model>
   --name <name>               name the session (named sessions are kept)
   --resume <name|id>          resume an existing session
-  --report <path>             write the CompletionReport JSON here (plain-text mode only)
+  --report <path>             write the CompletionReport JSON here (plain-text mode only);
+                              the file must not exist and must lie inside the workspace
 
 Providers and model ids are whatever the installed pi version supports; the
 set changes with the pi version. Brunel only stores an OpenRouter key (Windows
@@ -192,6 +194,8 @@ type cliEnv struct {
 type agentRunner interface {
 	agent.Agent
 	SetExtraEnv(map[string]string)
+	// SetPendingApproval supplies the report's pending_approval fact.
+	SetPendingApproval(func() *completion.ApprovalFact)
 }
 
 type approvalBroker interface {
@@ -259,6 +263,8 @@ type runSetup struct {
 	model   string
 	session *session.Session
 	agent   agentRunner
+	// reportPath is the resolved --report target, empty when not requested.
+	reportPath string
 }
 
 // prepareRun binds the workspace, resolves configuration and credentials,
@@ -274,6 +280,15 @@ func prepareRun(ctx context.Context, opts cliOptions, env cliEnv) (*runSetup, er
 		return nil, err
 	}
 	root := bound.Root()
+
+	// Check the report target first: a path that can never be written must
+	// fail before a session exists or the model is called.
+	var reportPath string
+	if opts.report != "" {
+		if reportPath, err = resolveReportPath(bound, root, opts.report); err != nil {
+			return nil, err
+		}
+	}
 
 	resolved, err := config.NewLoader(root, env.userProfile, env.credentials).Load(ctx, config.CLIOverrides{Mode: opts.mode, ModelID: opts.model})
 	if err != nil {
@@ -339,6 +354,8 @@ func prepareRun(ctx context.Context, opts cliOptions, env cliEnv) (*runSetup, er
 		model:   model,
 		session: sess,
 		agent:   env.newRunner(launch, cred, sess, root, mode, exe),
+
+		reportPath: reportPath,
 	}, nil
 }
 
@@ -357,7 +374,9 @@ func runPlain(opts cliOptions, setup *runSetup, env cliEnv) int {
 	// §5.2); without one no approver exists and CONFIRM fails closed with
 	// E_APPROVAL_REQUIRED_NO_TTY (§6.3).
 	if env.tty.stdin {
-		broker, err := env.startBroker(ctx, &relayApprover{inner: newTTYApprover(env.stdin, env.stderr), sink: sink})
+		relay := &relayApprover{inner: newTTYApprover(env.stdin, env.stderr), sink: sink}
+		setup.agent.SetPendingApproval(relay.Pending)
+		broker, err := env.startBroker(ctx, relay)
 		if err != nil {
 			sink.warn("approval prompts unavailable (" + err.Error() + "); commands that need confirmation will be refused")
 		} else {
@@ -377,9 +396,13 @@ func runPlain(opts cliOptions, setup *runSetup, env cliEnv) int {
 		code = exitFailed
 		reportError(env.stderr, runErr)
 	}
-	if opts.report != "" && rep != nil {
-		if err := completion.WriteFile(opts.report, rep); err != nil {
-			reportError(env.stderr, codedError{"E_REPORT_WRITE", "cannot write the report: " + err.Error()})
+	if setup.reportPath != "" && rep != nil {
+		if err := completion.WriteFile(setup.reportPath, rep); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				reportError(env.stderr, codedError{"E_FILE_EXISTS", "the --report file already exists; it is not overwritten"})
+			} else {
+				reportError(env.stderr, codedError{"E_REPORT_WRITE", "cannot write the report: " + err.Error()})
+			}
 			code = exitFailed
 		}
 	}
@@ -431,7 +454,9 @@ func runInteractive(setup *runSetup, env cliEnv) int {
 		},
 	}
 	err := env.runTUI(opts, func(sink agent.EventSink, approver safety.Approver) {
-		b, err := env.startBroker(ctx, &relayApprover{inner: approver, sink: sink})
+		relay := &relayApprover{inner: approver, sink: sink}
+		setup.agent.SetPendingApproval(relay.Pending)
+		b, err := env.startBroker(ctx, relay)
 		if err != nil {
 			sink.Emit(agent.Event{Kind: agent.EventApprovalResolved, Text: "channel unavailable (" + err.Error() + "); commands that need confirmation will be refused"})
 			return

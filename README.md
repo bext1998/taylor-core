@@ -43,7 +43,7 @@ brunel [flags] "<task>"     以純文字模式執行單次任務（不進入 alt
 --model <id>                原樣透傳給 pi --model，例如 openrouter/<model>
 --name <name>               為 session 命名（命名的 session 會保留）
 --resume <name|id>          恢復既有 session
---report <path>             寫出 CompletionReport JSON（僅純文字模式）
+--report <path>             寫出 CompletionReport JSON（僅純文字模式；檔案不得已存在、必須在 workspace 內，不覆寫）
 ```
 
 旗標可放在 task 前後。模型也可在 `<workspace>\.brunel\config.json` 或 `%USERPROFILE%\.brunel\config.json` 以 `model_id` 設定。

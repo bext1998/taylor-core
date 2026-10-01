@@ -42,6 +42,10 @@ type Runtime struct {
 	brunelExe     string
 	extraEnv      map[string]string
 	sink          EventSink
+	// pendingApproval reports the command currently waiting for approval,
+	// if any. The approval channel lives in the host (cmd/brunel), outside
+	// this package, so it is supplied by SetPendingApproval.
+	pendingApproval func() *completion.ApprovalFact
 	// start launches the pi subprocess. It defaults to pirpc.Start; tests
 	// inject a fake so the run loop can be exercised without a real
 	// Node.js/npm runtime.
@@ -73,6 +77,13 @@ func (r *Runtime) SetExtraEnv(env map[string]string) {
 	r.extraEnv = env
 }
 
+// SetPendingApproval supplies the source of the report's pending_approval
+// fact: a function returning the command awaiting an approval decision, or
+// nil when none is.
+func (r *Runtime) SetPendingApproval(fn func() *completion.ApprovalFact) {
+	r.pendingApproval = fn
+}
+
 // runState accumulates the run-level facts the completion report and the
 // settle classification need.
 type runState struct {
@@ -94,6 +105,10 @@ type runState struct {
 	// events.jsonl is incomplete is never reported as a clean completion.
 	appendErr   error
 	appendFails int
+	// facts is what the tools did; dirtyAtStart records that the workspace
+	// already had uncommitted changes when the run began.
+	facts        toolFacts
+	dirtyAtStart bool
 }
 
 // Run launches Pi, sends the task (with the injected AGENTS.md), and
@@ -102,7 +117,7 @@ type runState struct {
 // unrecoverable failure, a Brunel error.
 func (r *Runtime) Run(ctx context.Context, task string, sink EventSink) (*completion.Report, error) {
 	started := r.now()
-	st := &runState{task: task, started: started}
+	st := &runState{task: task, started: started, dirtyAtStart: workspaceDirty(r.workspaceRoot)}
 	r.sink = sink
 
 	// Resolve the Brunel executable path for the extension (BRUNEL_EXE).
@@ -230,9 +245,15 @@ func (r *Runtime) processEvent(st *runState, ev pirpc.Event) (bool, *completion.
 			}
 		}
 		r.emitAndAppend(st, ev)
+	case "tool_execution_start":
+		st.facts.start(ev.ToolCallID, ev.ExecName, ev.ToolArgs)
+		r.emitAndAppend(st, ev)
+	case "tool_execution_end":
+		st.facts.end(ev.ToolCallID, ev.ExecName, ev.IsError, ev.ToolDetails, ev.ToolErrorText)
+		r.emitAndAppend(st, ev)
 	default:
-		// tool_execution_start / tool_execution_end / agent_end: display
-		// and/or session events, nothing run-level.
+		// agent_end and the rest: display and/or session events, nothing
+		// run-level.
 		r.emitAndAppend(st, ev)
 	}
 	return false, nil, nil
@@ -407,15 +428,19 @@ func (r *Runtime) translate(ev pirpc.Event) *Event {
 	return nil
 }
 
-// report builds the frozen completion.Report (spec.md §8) best-effort. Only
-// the fields #9 can observe are filled; the workspace diff, structured tool
-// failures and a verification engine are work #14 owns.
+// report builds the frozen completion.Report (spec.md §8) from the facts the
+// run observed: usage, the tools' arguments and results, and the workspace
+// diff. The array fields are never nil so the JSON carries [] not null.
 func (r *Runtime) report(status string, st *runState, now time.Time) *completion.Report {
-	return &completion.Report{
-		SchemaVersion: completion.SchemaVersion,
-		SessionID:     r.session.Metadata().ID,
-		Task:          st.task,
-		Status:        status,
+	rep := &completion.Report{
+		ModifiedFiles:  []string{},
+		Verifications:  []completion.Verification{},
+		ToolFailures:   []completion.ToolFailure{},
+		RemainingRisks: []string{},
+		SchemaVersion:  completion.SchemaVersion,
+		SessionID:      r.session.Metadata().ID,
+		Task:           st.task,
+		Status:         status,
 		Cost: completion.CostSummary{
 			PromptTokens:     st.usage.PromptTokens,
 			CompletionTokens: st.usage.CompletionTokens,
@@ -424,6 +449,8 @@ func (r *Runtime) report(status string, st *runState, now time.Time) *completion
 			Turns:            st.turns,
 		},
 	}
+	r.applyFacts(rep, st)
+	return rep
 }
 
 // waitPromptAck blocks until Pi acknowledges the initial prompt (a

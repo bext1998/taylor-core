@@ -72,6 +72,14 @@ type Event struct {
 	ExecName   string
 	// IsError is true for a tool_execution_end that reported failure.
 	IsError bool
+	// ToolArgs is the raw arguments the model passed (tool_execution_start).
+	ToolArgs json.RawMessage
+	// ToolDetails is the structured result the Go tool returned
+	// (tool_execution_end result.details); empty for a failed call.
+	ToolDetails json.RawMessage
+	// ToolErrorText is the result text of a failed tool_execution_end,
+	// which carries the stable error code and message.
+	ToolErrorText string
 
 	// WillRetry is set by an agent_end that will retry the run.
 	WillRetry bool
@@ -110,6 +118,41 @@ type wireEvent struct {
 	ToolName   string          `json:"toolName"`
 	WillRetry  *bool           `json:"willRetry"`
 	IsError    *bool           `json:"isError"`
+	Args       json.RawMessage `json:"args"`
+	Result     json.RawMessage `json:"result"`
+}
+
+// wireToolResult is Pi's result object on a tool_execution_end: the text
+// content the model sees plus the extension's structured details.
+type wireToolResult struct {
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+	Details json.RawMessage `json:"details"`
+}
+
+// decodeToolResult extracts the structured details and, for a failed call,
+// the error text from a tool_execution_end result. Anything unparseable
+// yields empty values: the report then simply has fewer facts.
+func decodeToolResult(raw json.RawMessage, isError bool) (details json.RawMessage, errText string) {
+	if len(raw) == 0 {
+		return nil, ""
+	}
+	var r wireToolResult
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return nil, ""
+	}
+	if isError {
+		var parts []string
+		for _, c := range r.Content {
+			if c.Type == "text" && c.Text != "" {
+				parts = append(parts, c.Text)
+			}
+		}
+		return nil, strings.Join(parts, "\n")
+	}
+	return r.Details, ""
 }
 
 // piUsage mirrors Pi's nested usage object.
@@ -174,13 +217,18 @@ func decodeRPCEvent(line []byte) (Event, bool) {
 			Type:       "tool_execution_start",
 			ToolCallID: w.ToolCallID,
 			ExecName:   w.ToolName,
+			ToolArgs:   w.Args,
 		}, true
 	case "tool_execution_end":
+		isError := w.IsError != nil && *w.IsError
+		details, errText := decodeToolResult(w.Result, isError)
 		return Event{
-			Type:       "tool_execution_end",
-			ToolCallID: w.ToolCallID,
-			ExecName:   w.ToolName,
-			IsError:    w.IsError != nil && *w.IsError,
+			Type:          "tool_execution_end",
+			ToolCallID:    w.ToolCallID,
+			ExecName:      w.ToolName,
+			IsError:       isError,
+			ToolDetails:   details,
+			ToolErrorText: errText,
 		}, true
 	case "agent_end":
 		return Event{

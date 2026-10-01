@@ -8,12 +8,15 @@ import (
 )
 
 // WriteFile writes report as JSON to path without ever leaving a partial
-// file at path: the JSON goes to a temporary file in the same directory,
-// is flushed, and is then renamed over path (spec.md §9 CT-8, EC-5).
+// file at path: the JSON goes to a temporary file in the same directory, is
+// flushed, and is then linked into place (spec.md §9 CT-8, EC-5).
 //
-// This is the minimal writer the CLI's --report flag needs (issue #2); the
-// full CT-8 contract (report path inside the workspace, writable parent,
-// failure-case facts) is issue #14's scope and hardens this function.
+// It never replaces an existing file: until OQ-3 is ruled on, the
+// pre-ruling behaviour is to refuse (spec.md §16), reported as an error
+// wrapping fs.ErrExist. Linking, unlike renaming, fails atomically when the
+// target already exists, so a file created after the caller's own check is
+// still not overwritten. The caller is responsible for the path being inside
+// the workspace.
 func WriteFile(path string, report *Report) error {
 	if report == nil {
 		return errors.New("completion: nil report")
@@ -45,9 +48,7 @@ func WriteFile(path string, report *Report) error {
 		_ = os.Remove(tmpName)
 		return err
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	return nil
+	linkErr := os.Link(tmpName, path)
+	_ = os.Remove(tmpName)
+	return linkErr
 }
