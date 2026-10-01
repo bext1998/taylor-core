@@ -329,3 +329,56 @@ func TestReportDiffMasksKeyBeforeTruncating(t *testing.T) {
 		}
 	}
 }
+
+// Without a terminal nobody can approve a command that needs it (spec §6.3,
+// AC-11). The run must stop at once, not carry on while the model tries other
+// commands: Pi is aborted, the stable code is returned, and the report says
+// which command was waiting.
+func TestRunStopsImmediatelyWhenApprovalIsUnavailable(t *testing.T) {
+	events := finish(
+		toolStart("1", "run_powershell", `{"command":"Remove-Item important.txt"}`),
+		toolFail("1", "run_powershell", "E_APPROVAL_REQUIRED_NO_TTY: command requires confirmation but no terminal is attached"),
+		// What the model would do next if the run were allowed to continue.
+		toolStart("2", "create_file", `{"path":"after.txt","content":"x"}`),
+		toolEnd("2", "create_file", `{"tool":"create_file","hash":{"hash":"x"}}`),
+	)
+	proc := newFake(events, nil)
+	r := NewRuntime(pirpc.LaunchOptions{Model: "m"}, pirpc.Credential{}, newTestSession(t), t.TempDir(), "workspace", "").withFakeStart(proc, nil)
+	rep, err := r.Run(context.Background(), "task", &recordingSink{})
+
+	if pirpc.ErrorCode(err) != "E_APPROVAL_REQUIRED_NO_TTY" {
+		t.Fatalf("error = %v, want E_APPROVAL_REQUIRED_NO_TTY", err)
+	}
+	if !proc.aborted {
+		t.Fatal("Pi was not aborted")
+	}
+	if rep.Status == completion.StatusCompleted {
+		t.Fatalf("Status = %q, want a non-completed run", rep.Status)
+	}
+	if rep.PendingApproval == nil || rep.PendingApproval.Command != "Remove-Item important.txt" {
+		t.Fatalf("PendingApproval = %+v, want the command that could not be approved", rep.PendingApproval)
+	}
+	if len(rep.ModifiedFiles) != 0 {
+		t.Fatalf("ModifiedFiles = %v: the run kept going after the refusal", rep.ModifiedFiles)
+	}
+}
+
+// A user declining at the prompt is different: the model may carry on and the
+// run is not cut short (it only ends up incomplete, spec §8).
+func TestRunContinuesAfterUserDeclinesApproval(t *testing.T) {
+	events := finish(
+		toolStart("1", "run_powershell", `{"command":"Remove-Item x"}`),
+		toolFail("1", "run_powershell", "E_APPROVAL_DENIED: user declined confirmation"),
+		toolStart("2", "create_file", `{"path":"after.txt","content":"x"}`),
+		toolEnd("2", "create_file", `{"tool":"create_file","hash":{"hash":"x"}}`),
+	)
+	proc := newFake(events, nil)
+	r := NewRuntime(pirpc.LaunchOptions{Model: "m"}, pirpc.Credential{}, newTestSession(t), t.TempDir(), "workspace", "").withFakeStart(proc, nil)
+	rep, err := r.Run(context.Background(), "task", &recordingSink{})
+	if err != nil || proc.aborted {
+		t.Fatalf("a user decline stopped the run: err=%v aborted=%v", err, proc.aborted)
+	}
+	if len(rep.ModifiedFiles) != 1 {
+		t.Fatalf("ModifiedFiles = %v, want the later write recorded", rep.ModifiedFiles)
+	}
+}

@@ -39,6 +39,10 @@ type toolFacts struct {
 	// approvalDeclined is set when a call failed because the user declined
 	// (or no approval channel existed): spec §8 makes such a run incomplete.
 	approvalDeclined bool
+	// unapprovable is set when a call failed with E_APPROVAL_REQUIRED_NO_TTY:
+	// the command needed approval and no one could give it. The run stops
+	// there (spec §6.3) and the report records it as the pending approval.
+	unapprovable *completion.ApprovalFact
 	// secret is the credential handed to Pi. Output is masked with it before
 	// it is shortened: cutting first can split a key so that neither the
 	// exact match nor the key-format patterns recognise what is left.
@@ -72,6 +76,16 @@ func (f *toolFacts) end(id, name string, isError bool, details json.RawMessage, 
 		f.failures = append(f.failures, completion.ToolFailure{Tool: name, Error: errText})
 		if strings.Contains(errText, approvalDenied) || strings.Contains(errText, approvalNoTTY) {
 			f.approvalDeclined = true
+		}
+		if strings.Contains(errText, approvalNoTTY) && f.unapprovable == nil {
+			var args struct {
+				Command string `json:"command"`
+			}
+			_ = json.Unmarshal(call.args, &args)
+			f.unapprovable = &completion.ApprovalFact{
+				Command: args.Command,
+				Reason:  "approval required but no terminal is attached",
+			}
 		}
 		return
 	}
@@ -165,6 +179,13 @@ func (r *Runtime) applyFacts(rep *completion.Report, st *runState) {
 				Command: redact.Secrets(p.Command, secret),
 				Reason:  redact.Secrets(p.Reason, secret),
 			}
+		}
+	}
+
+	if rep.PendingApproval == nil && f.unapprovable != nil {
+		rep.PendingApproval = &completion.ApprovalFact{
+			Command: redact.Secrets(f.unapprovable.Command, secret),
+			Reason:  f.unapprovable.Reason,
 		}
 	}
 

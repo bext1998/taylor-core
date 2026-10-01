@@ -167,6 +167,9 @@ func (r *Runtime) Run(ctx context.Context, task string, sink EventSink) (*comple
 		if ended, rep, runErr := r.processEvent(st, ev); ended {
 			return rep, runErr
 		}
+		if rep, stop, runErr := r.stopIfUnapprovable(proc, st); stop {
+			return rep, runErr
+		}
 	}
 
 	// (2) + (3) Event loop: translate/emit/display and persist to the
@@ -202,8 +205,29 @@ func (r *Runtime) Run(ctx context.Context, task string, sink EventSink) (*comple
 			if ended, rep, runErr := r.processEvent(st, ev); ended {
 				return rep, runErr
 			}
+			if rep, stop, runErr := r.stopIfUnapprovable(proc, st); stop {
+				return rep, runErr
+			}
 		}
 	}
+}
+
+// stopIfUnapprovable ends the run as soon as a command needed approval and
+// none could be given (no terminal, spec §6.3 / AC-11). Left alone, the model
+// would see the tool error and keep trying other commands; instead Pi is
+// aborted, the report is incomplete with the command as pending approval, and
+// the stable code is returned so the CLI exits non-zero.
+func (r *Runtime) stopIfUnapprovable(proc pirpc.PiProcess, st *runState) (*completion.Report, bool, error) {
+	if st.facts.unapprovable == nil {
+		return nil, false, nil
+	}
+	_ = proc.Abort()
+	rep := r.report(completion.StatusIncomplete, st, r.now())
+	runErr := &pirpc.Error{
+		Code:    approvalNoTTY,
+		Message: "a command needs approval but no terminal is attached; the run was stopped without executing it",
+	}
+	return rep, true, applyStorageInvariant(rep, st, runErr)
 }
 
 // processEvent handles one decoded RPC event: it updates the run state,
