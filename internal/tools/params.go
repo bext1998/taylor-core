@@ -187,6 +187,20 @@ func decodeApplyPatchParams(raw json.RawMessage, p *ApplyPatchParams) error {
 				return codeError(ErrInvalidArgument.Code, fmt.Sprintf("hunk %d parameter %q is required", index, name), nil)
 			}
 		}
+		// A null inside the line arrays would be coerced to "" by the JSON
+		// decoder; the frozen schema says strings, so it is rejected instead of
+		// silently filled in (CT-3).
+		for _, name := range []string{"old_lines", "new_lines"} {
+			var lines []json.RawMessage
+			if err := json.Unmarshal(hunk[name], &lines); err != nil {
+				return codeError(ErrInvalidArgument.Code, fmt.Sprintf("hunk %d parameter %q must be an array of strings", index, name), err)
+			}
+			for _, line := range lines {
+				if bytes.Equal(bytes.TrimSpace(line), []byte("null")) {
+					return codeError(ErrInvalidArgument.Code, fmt.Sprintf("hunk %d parameter %q must not contain null", index, name), nil)
+				}
+			}
+		}
 	}
 	return nil
 }

@@ -13,7 +13,15 @@ import (
 	"github.com/bext1998/brunel/internal/filetools"
 )
 
-const defaultSearchResults = 200
+const (
+	defaultSearchResults = 200
+	// maxSearchResults caps max_results: a model asking for a million matches
+	// still gets a bounded result.
+	maxSearchResults = 1000
+	// maxSearchFileBytes is the largest file search_text reads; a bigger file
+	// is skipped instead of being loaded whole into memory.
+	maxSearchFileBytes = 5 << 20
+)
 
 var errSearchLimit = errors.New("search result limit reached")
 
@@ -28,7 +36,7 @@ func searchText(r filetools.Resolver, pattern, path string, glob *string, maxRes
 	}
 	limit := defaultSearchResults
 	if maxResults != nil {
-		limit = *maxResults
+		limit = min(*maxResults, maxSearchResults)
 	}
 	if limit == 0 {
 		return []TextMatch{}, nil
@@ -53,6 +61,9 @@ func searchText(r filetools.Resolver, pattern, path string, glob *string, maxRes
 			if !matched {
 				return nil
 			}
+		}
+		if info, err := d.Info(); err == nil && info.Size() > maxSearchFileBytes {
+			return nil
 		}
 		data, binary, err := readTextFile(current)
 		if err != nil {
@@ -89,6 +100,9 @@ func searchText(r filetools.Resolver, pattern, path string, glob *string, maxRes
 		return nil
 	})
 	if err != nil && !errors.Is(err, errSearchLimit) {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, codeError(filetools.ErrNotFound.Code, "path does not exist", err)
+		}
 		return nil, codeError(ErrToolIO.Code, "cannot search workspace files", err)
 	}
 	sort.Slice(matches, func(i, j int) bool {
@@ -115,9 +129,15 @@ func readTextFile(path string) ([]byte, bool, error) {
 	if bytes.IndexByte(first, 0) >= 0 {
 		return nil, true, nil
 	}
-	rest, err := io.ReadAll(file)
+	// Read one byte past what is left of the budget: a file that grew after the
+	// size check is then recognised as too large and skipped, instead of being
+	// searched truncated.
+	rest, err := io.ReadAll(io.LimitReader(file, int64(maxSearchFileBytes-len(first))+1))
 	if err != nil {
 		return nil, false, err
+	}
+	if len(first)+len(rest) > maxSearchFileBytes {
+		return nil, true, nil
 	}
 	return append(first, rest...), false, nil
 }

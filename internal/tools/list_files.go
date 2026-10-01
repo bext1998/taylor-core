@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"errors"
 	"io/fs"
 	"path/filepath"
 	"sort"
@@ -8,6 +9,9 @@ import (
 	"github.com/bext1998/brunel/internal/filetools"
 )
 
+// listFiles lists the regular files under path. maxDepth counts directory
+// levels below path; nil and 0 both mean "no limit" (0 is not "only path
+// itself"), and a negative value is rejected during validation.
 func listFiles(r filetools.Resolver, path string, glob *string, maxDepth *int) ([]FileEntry, error) {
 	root, err := r.Resolve(path)
 	if err != nil {
@@ -63,6 +67,9 @@ func listFiles(r filetools.Resolver, path string, glob *string, maxDepth *int) (
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, codeError(filetools.ErrNotFound.Code, "path does not exist", err)
+		}
 		return nil, codeError(ErrToolIO.Code, "cannot list workspace files", err)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
