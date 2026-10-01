@@ -5,7 +5,7 @@
 
 ## 原則
 
-- **候選版本在全部步驟通過前，不是支援版本。** `SupportedPiVersion` 只在最後一個提交才改；不得讓 `main` 出現「版本常數已改、證據未齊」的狀態。
+- **候選版本在全部步驟通過前，不是支援版本，也不得合併進 `main`。** 驗證本身需要 Brunel 接受候選版本（`checkPiVersion` 在啟動 RPC 前會拒絕與 `SupportedPiVersion` 不同的 Pi），所以版本常數**在升級分支的第一步就改**；「`main` 不接受未驗證的候選」由合併前的證據要求維持，不靠延後改常數，也不要新增繞過版本檢查的設定。
 - 本清單只涵蓋 Pi 版本變動。換 runtime、改 RPC 協定設計、fork Pi 不在範圍（ADR-002 的 Route C）。
 - 每個步驟的結果寫進升級 PR 的描述（見「證據」），不留口頭結論。
 
@@ -25,6 +25,8 @@
 
 - [ ] 在 npm 上確認候選版本、發布日期與變更紀錄；挑具體版本，不用範圍。
 - [ ] 開升級分支；`npm install --save-exact @earendil-works/pi-coding-agent@<候選版本>`，確認 `package.json`、`package-lock.json` 都是精確版本（`TestPiVersionPinMatchesManifests` 會檢查兩者與 `SupportedPiVersion` 一致，Pi 必須是直接依賴而非 peer）。
+- [ ] 同一個分支同步 `SupportedPiVersion`（`internal/pirpc/version.go`），並更新依賴舊版本的測試資料：fakepi 的預設 `--version` 回傳值（`internal/pirpc/testdata/fakepi/main.go`，現為寫死的版本字串）、`TestStartRejectsUnverifiedPiBeforeRPC` 的拒絕清單（要保留**與候選版本不同**的拒絕樣本）。否則換常數後會因舊測試資料失敗，那不代表候選 runtime 不相容。
+- [ ] 建出候選版本的 exe：在儲存庫根目錄 `go build -o brunel.exe ./cmd/brunel`（`taylor-tools.ts` 與 `node_modules` 需在它旁邊）。後面所有 E2E 都指向這個新建的 exe；`BRUNEL_E2E_EXE` 若指向舊 exe，會由舊的版本守衛判斷，證據無效。
 - [ ] 記下 lockfile 中該套件的 `integrity`（`package-lock.json` 的 `node_modules/@earendil-works/pi-coding-agent` 項）。
 - [ ] 檢查套件的 `bin.pi` 路徑是否改變（`piPackageEntry` 依它啟動 Node）。
 
@@ -40,13 +42,14 @@
 |---|---|---|
 | **Gate 1 Model Tool Authority** 工具 authority | 模型只能用 Brunel 註冊的 8 個工具，Pi 內建工具與其他 extension 都關閉；所有 I/O 與安全裁決仍在 Go | `TestBuildArgsMatchesFrozenCommandLineWithProvider`（啟動參數仍含 `--no-builtin-tools --no-extensions -e`）；`npm test`（extension 恰註冊 8 個工具）；`TestParameterSchemaSnapshot`；`TestRegistryRequiresGateBeforeEveryTool`；真實 E2E 中 8 個工具皆被呼叫成功。**判定**：全過，且 E2E 沒有出現 Pi 內建工具名稱 |
 | **Gate 2 RPC side channel** | Brunel 的 RPC client 不送 `{"type":"bash"}`；新版本沒有新增可執行命令的 host-level RPC command 被我們用到 | `go test ./internal/pirpc -run '^TestTCPIRPC001$'`（INV-9 靜態檢查，CI 也跑）；步驟 2 的文件檢查。**判定**：INV-9 守衛不得放寬；若新版本新增類似 command，只能在 spec 修訂後使用 |
-| **Gate 3 Windows process authority** | Job Object 與 Pi 行程樹獨立；Pi abort／crash／取消後不留任何子孫程序 | `TestStartPiProcessLifecycle`、`TestCloseIsIdempotent`、`TestVersionProbeReclaimsItsWholeProcessTree`、`TestRunAbortsOnContextCancel`；本機真實 Pi 跑一次取消（plain 模式 Ctrl+C 或 abort）後以 `Get-CimInstance Win32_Process` 確認沒有殘留 `node`／`pi` 行程。**判定**：殘留行程數為 0 |
-| **Gate 4 雙 runtime 複雜度** | Pi RPC → TypeScript extension → Go Host → PowerShell 的完整閉環仍可行，取消／串流／錯誤不需要額外 glue | 真實模型／工具 E2E：`BRUNEL_E2E_EXE`、`BRUNEL_E2E_MODEL` 後 `go test ./e2e -run RealModel -v`（三個 fixture）加一次含批准流程的 TUI 或 plain 實跑；錯誤轉譯 `TestTranslateProviderErrorRealWorldMessages`。**判定**：三個 fixture 全過，無新增 glue code |
+| **Gate 3 Windows process authority** | Job Object 與 Pi 行程樹獨立；Pi abort／crash／取消後不留任何子孫程序 | `TestStartPiProcessLifecycle`、`TestCloseIsIdempotent`、`TestVersionProbeReclaimsItsWholeProcessTree`、`TestRunAbortsOnContextCancel`；以步驟 1 建出的 Brunel 在本機跑一次取消（plain 模式 Ctrl+C）：執行中先記下**本次** Brunel、Pi（node）與其子孫（例如 `pwsh`）的 PID，用 `Get-CimInstance Win32_Process` 依 `ParentProcessId` 追出這組行程；取消處理與 Brunel 退出完成後，確認**這組 PID 都已消失**。不要以「全機沒有 node」判定（會把別的工具或別的 session 算進去）。注意直接對 Pi 送 RPC abort 只會讓 Pi 的 session 回到 idle，不能當成 Brunel 已終止程序樹的證據；程序樹的終止是 Brunel 的 `PiProcess.Abort`／Job Object。**判定**：本次那組 PID 殘留數為 0 |
+| **Gate 4 雙 runtime 複雜度** | Pi RPC → TypeScript extension → Go Host → PowerShell 的完整閉環仍可行，取消／串流／錯誤不需要額外 glue | 真實模型／工具 E2E：`BRUNEL_E2E_EXE`、`BRUNEL_E2E_MODEL` 後 `go test ./e2e -run RealModel -v`（三個 fixture）加一次含批准流程的 TUI 或 plain 實跑；錯誤轉譯 `TestTranslateProviderErrorRealWorldMessages`。**判定**：三個 fixture 全過；因版本變動而必要的事件解碼／extension 適配要記錄在 PR；若需要擴大跨 runtime 的架構或責任（ADR-002 的推翻條件是整合成本遠高於 spike 粗估、成為龐大的 Go↔TypeScript bridge），回報使用者，不自行吞下 |
 | **Gate 0 Windows runtime**（Git Bash） | 依 DECISIONS.md 2026-09-08：Git for Windows 為已文件化依賴，**不補測**「物理上無 Git Bash」 | 不重測；若新版本移除或新增對 shell 的依賴，須在步驟 2 記錄並回報使用者 |
 
 ### 4. 版本檢查與啟動行為
 
-- [ ] 把 `SupportedPiVersion` 改為候選版本（這是升級的最後一個提交）。
+（`SupportedPiVersion` 已在步驟 1 同步。）
+
 - [ ] `go test ./internal/pirpc`：`TestResolvePiLocalBeforePATH`、`TestResolvePiGlobalAndMissing`（本機優先、缺失 runtime）、`TestStartRejectsUnverifiedPiBeforeRPC`（版本不符在進入 RPC 前被拒、不洩漏探測輸出）、`TestStartLocalInstalledPi`（需 `npm ci` 與 `BRUNEL_TEST_REAL_PI=1`）。
 - [ ] 錯誤碼維持 spec EC-13：缺 runtime／查詢失敗 `E_RUNTIME_REQUIRED`、版本不符 `E_PI_VERSION_MISMATCH`。
 
