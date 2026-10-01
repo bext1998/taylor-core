@@ -1,0 +1,7 @@
+{
+  "name": "failing-test-diagnosis",
+  "category": "failing test diagnosis",
+  "task": "`go test ./...` is failing in this project and I do not know why. Run it, find the root cause, and fix the code so the tests pass. Do not edit the test files.",
+  "verify": ["go", "test", "./..."],
+  "protected_files": ["pricing_test.go"]
+}

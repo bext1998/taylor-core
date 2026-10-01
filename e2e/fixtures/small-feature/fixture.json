@@ -1,0 +1,7 @@
+{
+  "name": "small-feature",
+  "category": "small feature",
+  "task": "Add a Peek method to Stack in stack.go. Peek returns the top element and true without removing it, or the zero value and false when the stack is empty. stack_test.go already describes the expected behaviour; make `go test ./...` pass. Do not edit the test files.",
+  "verify": ["go", "test", "./..."],
+  "protected_files": ["stack_test.go"]
+}

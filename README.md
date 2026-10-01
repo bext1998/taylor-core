@@ -77,6 +77,7 @@ brunel logout           # 移除已存的 key
 - Coding Agent 先閱讀 `AGENTS.md`、`MAZE_PROJECT.md`、`STATUS.md` 與 `NEXT_ACTION.md`。
 - 不得自行修改規格中的 `[FROZEN]` 契約；變更須走規格修訂與使用者裁決。
 - 後續變更使用功能分支與 Pull Request，不直接推送 `main`。
+- E2E fixtures（AC-16）在 `e2e/`：bug 修復、小功能、失敗測試診斷三個小型 Go 專案，各含任務、驗證命令與參考解答。預設 `go test ./...` 只驗證 fixture 本身（修正前失敗、套用參考解答後通過）；對真實模型的閉環檢查需自行啟用，不跑在預設 CI：在專案根目錄建出 `brunel.exe`，設定 `BRUNEL_E2E_EXE`（其路徑）與 `BRUNEL_E2E_MODEL`（`--model` 值），再執行 `go test ./e2e -run RealModel -v`。
 
 ## Session 資料安全
 
