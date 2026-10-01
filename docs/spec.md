@@ -1,10 +1,10 @@
 # Brunel Alpha 1 Specification
 
-**版本**：v1.3.4
+**版本**：v1.3.5
 
 **狀態**：Approved
 
-**日期**：2026-10-01
+**日期**：2026-10-02
 
 **適用對象**：實作工程師、AI 代理（Claude Code / Codex）、規格審查者
 
@@ -114,6 +114,7 @@ Brunel 與 Taylor、Watt 工程上完全獨立，不 import、偵測、呼叫或
 - `--mode workspace|readonly`，預設 `workspace`。
 - `--name <name>`、`--resume <name|id>`、`--report <path>`、`--model <id>`。
 - `--report` 不使程式進入 TUI；report 仍於任務終態寫出。
+- `--report` 在 run 開始前檢查目標，失敗時不啟動 run：路徑不在 workspace 內回 `E_PATH_ESCAPE`；目標已存在回 `E_FILE_EXISTS`（OQ-3 的暫行行為，不覆寫）；父目錄不存在或寫入失敗回 `E_REPORT_WRITE`。
 - `brunel login [openrouter]`／`brunel logout [openrouter]`：將 OpenRouter key 存入或移出 Windows Credential Manager（target `Brunel/OpenRouter`），比照 Pi 的 `/login`、`/logout`。key 只從終端機隱藏提示或 stdin 第一行讀取，不接受參數，不得被輸出、記錄或寫入 Session；其他 provider 不在範圍內，仍由 Pi 自行處理（Issue #65）。僅當第一個參數恰為 `login` 或 `logout` 時視為此指令，`brunel -- login` 仍為任務。
 
 ### 4.2 TUI 契約 [FROZEN]
@@ -421,7 +422,7 @@ INV-5 範圍依 DECISIONS.md 2026-10-01 裁決：新版 Host 將啟動時綁定�
 | EC-10 | 磁碟滿、權限撤銷或防毒鎖檔 | 原檔保持完整；event/report 不宣稱成功 |
 | EC-11（ADR-002） | Pi 回報 provider 協定錯誤，例如上游資料格式錯誤 | 依 CT-6 轉譯為 `E_PROVIDER_PROTOCOL`；不重播可能已有副作用的 call。SSE 解析、model probe 與 provider 重試由 Pi 負責 |
 | EC-12 | 非 Windows 或 pwsh 7 不存在 | 工作前回 `E_UNSUPPORTED_PLATFORM` 或 `E_PWSH_REQUIRED` |
-| EC-13（ADR-002） | Node.js/npm 不存在或 `pi` 無法啟動 | 工作前回 `E_PI_RUNTIME_REQUIRED`，附安裝指引連結；不得 fallback 或以其他方式模擬 Agent Loop |
+| EC-13（ADR-002） | Node.js/npm 不存在或 `pi` 無法啟動 | 工作前回 `E_RUNTIME_REQUIRED`，附安裝指引（`npm ci`）；Pi 版本與釘選版本不符時回 `E_PI_VERSION_MISMATCH`，同樣在啟動 RPC 之前拒絕；不得 fallback 或以其他方式模擬 Agent Loop |
 
 ---
 
@@ -533,6 +534,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 
 | OQ-12（Issue #8） | Pi 自行探索、Brunel 從未持有的 provider key 若被 Pi 回顯於錯誤訊息，`internal/pirpc` 目前只能做啟發式遮罩；公開錯誤訊息保證不含 secret 的最終責任邊界（Brunel 遮罩義務的範圍、Pi 自身是否也需負責）尚未定義 | Alpha 1 維持現有啟發式遮罩，不阻塞其餘 #8 範圍關閉；正式責任邊界待裁決，裁決前不得視為已解決 |
 | OQ-13（Issue #11） | 就近 AGENTS.md 送達機制的 4 個邊界案例尚未有明確行為承諾：(a) 首次操作若為 `write_file`／`create_file`／`apply_patch` 屬不可逆寫入，規則事後才送達擋不住已發生的寫入；(b) `run_powershell` 只按呼叫時的 cwd 查規則，指令內部再 `cd` 時目標目錄的規則不會送達；(c) `AGENTS.md` 為 symlink 時被靜默略過（`1f80b19`），模型無從得知「此處有規則但被略過」；(d) 工具呼叫失敗時規則不送達，模型修正後重試仍可能未見規則 | Alpha 1 接受現況為已知限制，不逐一修復；四項皆為 context-only 規則的傳遞完整性問題，不構成 AC-5「不能授權工具」的安全不變式缺口。是否需要為任一項補上明確緩解，留待日後裁決 |
+| OQ-14（Issue #31） | `run_powershell` 命令中的相對路徑逃逸（例如 `Get-Content ..\..\Windows\win.ini`）不會被 classifier 分類為 CONFIRM | Alpha 1 接受為已知限制：§6.2 的觸發條件是「命令文字中明確出現 workspace 外的絕對路徑」，classifier 為 best-effort、不宣稱涵蓋完整 PowerShell；不修改 §6 的凍結文字、不擴大 classifier。是否補強留待日後裁決，裁決前不得宣稱相對路徑逃逸受 classifier 保護 |
 
 未裁決問題不得由實作者自行升級成正式需求。
 
@@ -552,6 +554,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 
 | 版本 | 日期 | 修改內容 | 作者 |
 |---|---|---|---|
+| v1.3.5 | 2026-10-02 | 依使用者委託並參考 Codex 與 Pi 的意見裁決：§4.1 補 `--report` 的失敗碼（正式化 `E_REPORT_WRITE`，並列出既有的 `E_PATH_ESCAPE`、`E_FILE_EXISTS`）；EC-13 的錯誤碼對齊既有實作為 `E_RUNTIME_REQUIRED`，並補上 `E_PI_VERSION_MISMATCH`；新增 §16 OQ-14（Issue #31 項次 4：相對路徑逃逸為已知限制）。不修改任何 `[FROZEN]` 文字。 | 使用者委託 + Claude（Codex、Pi 諮詢） |
 | v1.3.4 | 2026-10-01 | 對齊 Pi 委派後的 AC-4／EC-11 與 Gate 0 既有決策；區分變更與發布驗證。依使用者裁決保留 resume 恢復承諾、明定 Host／Pi context 分工；接受 INV-5 檢查至 I/O 的 TOCTOU 為 Alpha 1 限制；允許維持行為與公開格式的內部 Go 型別重構。僅修訂規格，不宣稱未驗證功能已完成。 | 使用者裁決 + Codex |
 | v1.3.3 | 2026-09-19 | Issue #1 issue 治理清理的一部分：新增 §16 OQ-12（Issue #8 provider key 遮罩責任邊界未定義）、OQ-13（Issue #11 就近 AGENTS.md 送達機制 4 個邊界案例，原記於 DECISIONS.md 2026-09-18 條目但未提升為 spec OQ）。純文件記錄既有已知限制，不變更任何行為或驗收標準。 | 使用者裁決 + Claude |
 | v1.3.2 | 2026-09-18 | 依 Issue #47 裁決（DECISIONS.md 2026-09-18 條目，方向 1）改寫 §7.3 為「root 於啟動注入、子目錄規則於首次觸及該目錄的成功工具結果送達，自該次起對同目錄後續操作生效，首次操作不受此層約束」；AC-5 通過標準同步改寫為「首次操作後、同目錄後續操作時就近規則生效，且不得授權工具」；新增 §16 OQ-11 記錄 context compaction 可能擠掉已送達規則、per-session 已送集合不會補送的殘餘落差，接受為 Alpha 1 已知限制。僅文件對齊 PR #46 之後的實作（`agents-md-delivery.ts`／`taylor-tools.ts` per-session 去重），AC-5 安全不變式本身未變更。 | 使用者裁決 + Claude |
