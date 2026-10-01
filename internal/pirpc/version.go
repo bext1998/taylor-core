@@ -105,20 +105,20 @@ func piPackageEntry(packageDir string) (string, error) {
 	return entry, nil
 }
 
+// versionProbeTimeout bounds `pi --version`; a variable so tests can shorten it.
+var versionProbeTimeout = 10 * time.Second
+
 func checkPiVersion(ctx context.Context, path string, prefix []string, workDir string) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, versionProbeTimeout)
 	defer cancel()
 	args := append(append([]string(nil), prefix...), "--version")
-	cmd := exec.CommandContext(ctx, path, args...)
-	cmd.Dir = workDir
-	cmd.WaitDelay = time.Second
-	hideVersionWindow(cmd)
-	// The probe inherits the host environment (cmd.Env is nil), but does not
-	// receive the RPC launch's additional credential or approval-token injection.
-	// Never expose arbitrary stdout/stderr in a public error.
+	// The probe inherits the host environment, but does not receive the RPC
+	// launch's additional credential or approval-token injection. Never expose
+	// arbitrary stdout/stderr in a public error. runVersionProbe also owns the
+	// probe's whole process tree: on every exit path nothing it started is left
+	// running (INV-7).
 	output := &versionOutput{}
-	cmd.Stdout = output
-	if err := cmd.Run(); err != nil {
+	if err := runVersionProbe(ctx, path, args, workDir, output); err != nil {
 		return codeError(ErrPiRuntimeRequired.Code, "cannot query Pi version; run npm ci and verify Node.js", err)
 	}
 	if output.overflow || strings.TrimSpace(string(output.data)) != SupportedPiVersion {

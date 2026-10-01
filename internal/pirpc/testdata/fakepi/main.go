@@ -17,10 +17,39 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
+	"time"
 )
 
 func main() {
+	// --hold is the grandchild of the version-probe tree test: it records its
+	// pid and then lives until it is killed.
+	if len(os.Args) > 1 && os.Args[1] == "--hold" {
+		_ = os.WriteFile(os.Getenv("FAKE_PI_PIDFILE"), []byte(strconv.Itoa(os.Getpid())), 0600)
+		time.Sleep(10 * time.Minute)
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		// FAKE_PI_VERSION_TREE starts a grandchild that inherits stdout, then
+		// either hangs ("hang") or prints the version and exits ("exit"),
+		// leaving the grandchild behind.
+		if mode := os.Getenv("FAKE_PI_VERSION_TREE"); mode != "" {
+			grandchild := exec.Command(os.Args[0], "--hold")
+			grandchild.Stdout, grandchild.Stderr = os.Stdout, os.Stderr
+			if err := grandchild.Start(); err != nil {
+				os.Exit(2)
+			}
+			for i := 0; i < 500; i++ {
+				if _, err := os.Stat(os.Getenv("FAKE_PI_PIDFILE")); err == nil {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			if mode == "hang" {
+				time.Sleep(10 * time.Minute)
+			}
+		}
 		if os.Getenv("FAKE_PI_VERSION_EXIT") == "1" {
 			os.Exit(1)
 		}
