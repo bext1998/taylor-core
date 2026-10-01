@@ -387,3 +387,13 @@ func TestWriteFileStaleDetectionUnderLockPreservesFile(t *testing.T) {
 		t.Fatalf("file changed after rejected stale write: %q", content)
 	}
 }
+
+// The missing parent is reported as "not found" with its own message, not as a
+// generic I/O failure the model cannot act on (#69 item 11).
+func TestCreateFileMissingParentIsReportedAsNotFound(t *testing.T) {
+	dir := t.TempDir()
+	_, err := CreateFile(fakeResolver{root: dir}, "sub/new.txt", "hello")
+	if ErrorCode(err) != ErrNotFound.Code {
+		t.Fatalf("CreateFile() code = %q, want %q (err = %v)", ErrorCode(err), ErrNotFound.Code, err)
+	}
+}

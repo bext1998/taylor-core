@@ -99,6 +99,11 @@ func CreateFile(r Resolver, path, content string) (string, error) {
 	dir := filepath.Dir(abs)
 	tmp, err := os.CreateTemp(dir, ".brunel-filetools-create-*")
 	if err != nil {
+		if os.IsNotExist(err) {
+			// create_file does not create directories (spec 5.4); say so
+			// instead of a generic I/O failure.
+			return "", codeError(ErrNotFound.Code, "parent directory does not exist", err)
+		}
 		return "", codeError(ErrFileIO.Code, "cannot create temporary file", err)
 	}
 	tmpName := tmp.Name()

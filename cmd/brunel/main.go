@@ -16,6 +16,7 @@ import (
 
 	"github.com/bext1998/brunel/internal/approval"
 	brunelexec "github.com/bext1998/brunel/internal/exec"
+	"github.com/bext1998/brunel/internal/filetools"
 	"github.com/bext1998/brunel/internal/safety"
 	"github.com/bext1998/brunel/internal/tools"
 	"github.com/bext1998/brunel/internal/workspace"
@@ -370,6 +371,10 @@ func responseMessage(code string) string {
 		return "pwsh (PowerShell 7+) is required"
 	case brunelexec.ErrUnsupportedPlatform.Code:
 		return "operation is unsupported on this platform"
+	case filetools.ErrNotFound.Code:
+		return "the file, directory or parent directory does not exist"
+	case brunelexec.ErrToolTimeout.Code:
+		return "tool call timed out"
 	default:
 		return "tool call failed"
 	}
