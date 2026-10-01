@@ -131,16 +131,27 @@ func (r *Runtime) recoveryContext() string {
 		// Nothing usable was saved. A brand-new session has no events either and
 		// needs no note; a session that already has events does, so the model
 		// does not take the missing summary for a clean start.
-		if readErr == nil && len(events.Events) == 0 {
+		if readErr == nil && len(events.Events) == 0 && !events.TrailingFragment {
 			return ""
 		}
 		return recoverySection("This task continues an earlier Brunel session, but no summary of it was saved or it could not be read, so what happened before is unknown. Do not assume a clean start: check the workspace (list_files, workspace_diff) before relying on earlier results.")
 	}
-	if readErr == nil && len(events.Events) > sum.LastEventSeq {
-		// The log is ahead of the summary (a run was cut short, or its summary
-		// could not be saved): say which part is unknown instead of presenting a
-		// stale summary as the whole story.
-		fmt.Fprintf(&b, "Gap: %d event(s) were recorded after this summary was saved and are not summarized, so what happened in them is unknown; check the workspace before relying on the above.\n", len(events.Events)-sum.LastEventSeq)
+	switch {
+	case readErr != nil:
+		// The log cannot be compared with the summary at all.
+		b.WriteString("Gap: the session event log could not be read, so it is unknown whether the above is complete; check the workspace before relying on it.\n")
+	default:
+		if len(events.Events) > sum.LastEventSeq {
+			// The log is ahead of the summary (a run was cut short, or its summary
+			// could not be saved): say which part is unknown instead of presenting
+			// a stale summary as the whole story.
+			fmt.Fprintf(&b, "Gap: %d event(s) were recorded after this summary was saved and are not summarized, so what happened in them is unknown; check the workspace before relying on the above.\n", len(events.Events)-sum.LastEventSeq)
+		}
+		if events.TrailingFragment {
+			// A run was interrupted while writing an event; the half-written
+			// record is set aside, not treated as a complete event.
+			b.WriteString("Gap: the session event log ends with an incomplete record (a run was probably interrupted while writing), so the last step before the interruption is unknown; check the workspace before relying on the above.\n")
+		}
 	}
 	return recoverySection(strings.TrimRight(b.String(), "\n"))
 }

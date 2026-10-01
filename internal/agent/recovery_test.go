@@ -252,6 +252,37 @@ func TestStaleSummaryDisclosesTheUnsummarizedEvents(t *testing.T) {
 	}
 }
 
+// A run interrupted while it was writing an event leaves a half-written last
+// line. That line is set aside, not read as an event, and the model is told the
+// last step before the interruption is unknown - even though the complete
+// events and the summary agree with each other.
+func TestIncompleteLastRecordIsDisclosed(t *testing.T) {
+	_, sess, root := newNamedSession(t, "work")
+	runTask(t, sess, root, "first task", firstTaskEvents())
+	appendRaw(t, sess, `{"seq":99,`)
+	if prompt := runTask(t, sess, root, "continue", finish()); !strings.Contains(prompt, "ends with an incomplete record") {
+		t.Errorf("a summary whose log ends with a torn record must say so:\n%s", prompt)
+	}
+
+	// The interrupted run was the first one: no complete event and no summary,
+	// only the fragment. A clean-start assumption would be wrong here too.
+	_, fresh, freshRoot := newNamedSession(t, "fresh")
+	appendRaw(t, fresh, `{"seq":1,`)
+	if prompt := runTask(t, fresh, freshRoot, "continue", finish()); !strings.Contains(prompt, "no summary of it was saved") {
+		t.Errorf("a session holding only a torn record must not look like a new one:\n%s", prompt)
+	}
+}
+
+func appendRaw(t *testing.T, sess *session.Session, text string) {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(sess.Dir(), "events.jsonl"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString(text)
+	_ = f.Close()
+}
+
 // The section says what it is and what it leaves out: history rather than
 // instructions, and fixed limits on what is kept.
 func TestRecoverySectionStatesItsLimits(t *testing.T) {
