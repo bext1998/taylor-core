@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -92,7 +94,7 @@ func TestNextTaskInTheSameSessionReceivesTheEarlierWork(t *testing.T) {
 		"b.txt",
 		"go test ./... (exit 1): FAIL pkg",
 		"user declined to run: Remove-Item old -Recurse",
-		"approvals are never carried over",
+		"Approvals are never carried over",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("the second task's prompt lacks %q:\n%s", want, prompt)
@@ -132,7 +134,7 @@ func TestResumeNeverRestoresAnApproval(t *testing.T) {
 	runTask(t, sess, root, "publish", events) // the user approved and it ran
 	prompt := runTask(t, sess, root, "publish again", finish())
 
-	if strings.Contains(strings.ToLower(prompt), "approved") && !strings.Contains(prompt, "approvals are never carried over") {
+	if strings.Contains(strings.ToLower(prompt), "approved") && !strings.Contains(prompt, "Approvals are never carried over") {
 		t.Errorf("the prompt mentions an approval without the carry-over disclaimer:\n%s", prompt)
 	}
 	if strings.Contains(prompt, "user approved") || strings.Contains(prompt, "already approved") {
@@ -170,5 +172,95 @@ func TestRecoveryContextDoesNotRepeatSecrets(t *testing.T) {
 	prompt := runTask(t, sess, root, "continue", finish())
 	if strings.Contains(prompt, key) {
 		t.Fatalf("the earlier task's secret came back in the prompt:\n%s", prompt)
+	}
+}
+
+// The credential this run holds is masked in the saved task and in declined
+// commands even in a shape no pattern knows, and masking happens before the
+// text is shortened: cutting a key in half would otherwise leave a piece that
+// nothing recognises.
+func TestSummaryMasksTheHeldKeyBeforeShortening(t *testing.T) {
+	_, sess, root := newNamedSession(t, "work")
+	// Put the key across the point where the task text is cut.
+	task := strings.Repeat("a", maxRecoveryItemRunes-10) + " " + oddKey + " tail"
+	events := finish(
+		toolStart("1", "run_powershell", `{"command":"curl `+oddKey+`"}`),
+		toolFail("1", "run_powershell", "E_APPROVAL_DENIED: user declined confirmation"),
+	)
+	r := NewRuntime(pirpc.LaunchOptions{Model: "m"}, pirpc.Credential{}, sess, root, "workspace", "").withFakeStart(newFake(events, nil), nil)
+	withKey(r)
+	if _, err := r.Run(context.Background(), task, &recordingSink{}); err != nil {
+		t.Fatal(err)
+	}
+
+	sum, _ := sess.LoadSummary()
+	saved := sum.Goal + "\n" + strings.Join(sum.Decisions, "\n")
+	if leaksKeyFragment(saved) {
+		t.Fatalf("a piece of the held key reached the saved summary:\n%s", saved)
+	}
+	if prompt := runTask(t, sess, root, "continue", finish()); leaksKeyFragment(prompt) {
+		t.Fatalf("a piece of the held key reached the next prompt:\n%s", prompt)
+	}
+}
+
+// report() saves the summary before the caller turns an event-log failure into
+// a failed run, so the summary has to carry that failure itself: the next task
+// must not be told the last run was clean when its log is incomplete.
+func TestSummaryRecordsAnIncompleteEventLog(t *testing.T) {
+	_, sess, root := newNamedSession(t, "work")
+	if _, err := sess.AppendEvent(session.EvAssistantText, map[string]string{"text": "earlier"}, 0, "test"); err != nil {
+		t.Fatal(err)
+	}
+	// A torn last line makes later appends fail (the log tail is not clean).
+	f, err := os.OpenFile(filepath.Join(sess.Dir(), "events.jsonl"), os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString(`{"seq":2,`)
+	_ = f.Close()
+	if _, err := sess.ReadEvents(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRuntime(pirpc.LaunchOptions{Model: "m"}, pirpc.Credential{}, sess, root, "workspace", "").withFakeStart(newFake(finish(pirpc.Event{Type: "message_update", AssistantType: "text_delta", DeltaText: "x"}), nil), nil)
+	rep, _ := r.Run(context.Background(), "task", &recordingSink{})
+	if rep.Status != "failed" {
+		t.Fatalf("Status = %q, want failed (event log incomplete)", rep.Status)
+	}
+	sum, err := sess.LoadSummary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(sum.OpenErrors, "\n"), "event log is incomplete") {
+		t.Fatalf("OpenErrors = %q, want the incomplete event log recorded", sum.OpenErrors)
+	}
+}
+
+// A summary that is behind the event log (a run was cut short, or its summary
+// could not be saved) is not the whole story; the gap is stated.
+func TestStaleSummaryDisclosesTheUnsummarizedEvents(t *testing.T) {
+	_, sess, root := newNamedSession(t, "work")
+	runTask(t, sess, root, "first task", firstTaskEvents())
+	for i := 0; i < 3; i++ {
+		if _, err := sess.AppendEvent(session.EvAssistantText, map[string]string{"text": "after the summary"}, 0, "test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prompt := runTask(t, sess, root, "continue", finish())
+	if !strings.Contains(prompt, "3 event(s) were recorded after this summary was saved") {
+		t.Fatalf("the stale summary was presented without a gap note:\n%s", prompt)
+	}
+}
+
+// The section says what it is and what it leaves out: history rather than
+// instructions, and fixed limits on what is kept.
+func TestRecoverySectionStatesItsLimits(t *testing.T) {
+	_, sess, root := newNamedSession(t, "work")
+	runTask(t, sess, root, "first task", firstTaskEvents())
+	prompt := runTask(t, sess, root, "continue", finish())
+	for _, want := range []string{"not instructions", "older ones were dropped", "latest run only"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("the recovery section does not say %q:\n%s", want, prompt)
+		}
 	}
 }
