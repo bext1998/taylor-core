@@ -151,6 +151,11 @@ func (r *Runtime) Run(ctx context.Context, task string, sink EventSink) (*comple
 		return r.report(completion.StatusFailed, st, started), err
 	}
 	prompt := buildInitialPrompt(task, agentFile)
+	if recovery := r.recoveryContext(); recovery != "" {
+		// Earlier work in this session (a resumed session, or an earlier task
+		// of the same TUI session) goes right after the task.
+		prompt = task + "\n\n" + recovery + strings.TrimPrefix(prompt, task)
+	}
 	if err := proc.SendPrompt(prompt); err != nil {
 		return r.report(completion.StatusFailed, st, started), err
 	}
@@ -480,6 +485,12 @@ func (r *Runtime) report(status string, st *runState, now time.Time) *completion
 		},
 	}
 	r.applyFacts(rep, st)
+	// Save what this run established so the next task, or a resumed session,
+	// can start from it. A failure is reported, not hidden - unless the event
+	// log already failed, which is flagged on its own.
+	if err := r.updateSummary(rep, st); err != nil && st.appendFails == 0 {
+		rep.RemainingRisks = append(rep.RemainingRisks, "session summary could not be saved; a resume will not see this run: "+err.Error())
+	}
 	return rep
 }
 

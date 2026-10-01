@@ -43,6 +43,9 @@ type toolFacts struct {
 	// the command needed approval and no one could give it. The run stops
 	// there (spec §6.3) and the report records it as the pending approval.
 	unapprovable *completion.ApprovalFact
+	// declined lists the commands the user declined at an approval prompt, so
+	// the next run in the session can be told not to assume they were run.
+	declined []string
 	// secret is the credential handed to Pi. Output is masked with it before
 	// it is shortened: cutting first can split a key so that neither the
 	// exact match nor the key-format patterns recognise what is left.
@@ -76,6 +79,14 @@ func (f *toolFacts) end(id, name string, isError bool, details json.RawMessage, 
 		f.failures = append(f.failures, completion.ToolFailure{Tool: name, Error: errText})
 		if strings.Contains(errText, approvalDenied) || strings.Contains(errText, approvalNoTTY) {
 			f.approvalDeclined = true
+		}
+		if strings.Contains(errText, approvalDenied) {
+			var args struct {
+				Command string `json:"command"`
+			}
+			if json.Unmarshal(call.args, &args) == nil && args.Command != "" {
+				f.declined = append(f.declined, args.Command)
+			}
 		}
 		if strings.Contains(errText, approvalNoTTY) && f.unapprovable == nil {
 			var args struct {
