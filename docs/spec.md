@@ -1,10 +1,10 @@
 # Brunel Alpha 1 Specification
 
-**版本**：v1.3.3
+**版本**：v1.3.4
 
 **狀態**：Approved
 
-**日期**：2026-09-19
+**日期**：2026-10-01
 
 **適用對象**：實作工程師、AI 代理（Claude Code / Codex）、規格審查者
 
@@ -20,6 +20,8 @@ Brunel 是面向進階個人開發者的薄型 coding harness。它要驗證：�
 Alpha 1 的成功不是「提供完整安全沙箱」，而是讓使用者在受控 workspace 中，以單一 Windows 執行檔完成理解、修改與驗證閉環，並清楚看見模型做了什麼。
 
 `[FROZEN]` 標記的介面與不變式不得由實作者自行修改。變更必須先修訂規格並取得使用者裁決。
+
+內部 Go 型別的形狀依 §5.2／§14 的例外處理；安全行為、公開資料格式與持久化相容性仍受凍結契約約束。
 
 ### 1.1 已確認決策
 
@@ -41,7 +43,7 @@ Brunel 與 Taylor、Watt 工程上完全獨立，不 import、偵測、呼叫或
 
 ### 2.1 Goals
 
-- **G-1**：乾淨 Windows x64 環境下載 Brunel 後即可執行；需另外安裝 Node.js/npm 作為 Pi（model-facing Agent Runtime）的執行環境，比照現有 PowerShell 7 依賴的揭露方式，不再承諾零依賴單檔 exe（見 [ADR-002](adr/ADR-002-pi-agent-runtime.md)）。目前設計（Taylor RPC client 停用 Pi 全部內建工具、絕不送出 `bash` RPC command）理論上不需要另外安裝 Git Bash；此點待正式 RPC client 實作完成、且在未裝 Git Bash 的乾淨環境驗證後才能確認為既定事實（Issue #24 Gate 0 遺留待辦）。
+- **G-1**：乾淨 Windows x64 環境依 README 安裝 Node.js/npm、PowerShell 7、Git for Windows 與鎖定的 Pi 套件，部署 Brunel 與必要 extension 後可執行；不承諾零依賴單檔 exe（見 [ADR-002](adr/ADR-002-pi-agent-runtime.md)）。Git for Windows 為已聲明依賴，未安裝 Git Bash 的 Gate 0 情境依 DECISIONS.md 2026-09-08 決策接受風險，不列為 Alpha 1 發布門檻。
 - **G-2**：模型可在固定 workspace 內使用 8 個內建工具完成理解、修改與驗證。
 - **G-3**：一般開發操作不打斷使用者；明顯風險操作會逐次確認。
 - **G-4**：互動模式以薄型 TUI 顯示對話、工具活動、用量、狀態與批准請求。
@@ -154,6 +156,8 @@ taylor-tools.ts（Pi extension，Node）   以 `pi.registerTool()` 註冊 8 個 
 `cmd` 選擇 TUI 或純文字 sink；`internal/pirpc` 啟動 `pi --mode rpc --no-builtin-tools --no-extensions -e taylor-tools.ts --no-session --provider <p> --model <m>` 子行程，將其 RPC event 轉譯為 `agent.Event`。Model-facing agent loop 邏輯本身不在 Go 內實作，只在 Pi 內；Go 不知道實際 presentation，也不參與模型推理決策。禁止循環依賴。
 
 ### 5.2 Agent 與事件介面 [FROZEN]
+
+本節凍結的是 Agent／presentation／安全決策的責任邊界與可觀察行為。下列 Go 型別為內部介面的基準形狀；在同步呼叫者與相關測試、維持行為的前提下，可調整欄位、方法與內部事件表示，不必為型別形狀變更提升規格版本。若調整影響公開 JSON、既有 session 可讀性或安全授權，仍須依 §14 修訂凍結契約。
 
 ```go
 package agent
@@ -296,14 +300,16 @@ const (
 - Session 使用不可變 ULID；名稱可重複。
 - 未命名 session 正常退出後刪除；異常中止預設保留 72 小時。
 - `events.jsonl` 只 append；summary、resume 與清理不得改寫既有完整 event。
-- 恢復時載入摘要、目標、決策、diff、驗證與未完成事項，不重建 shell 程序。
+- 恢復時由 Host 讀取 Brunel 保存的摘要與事件，恢復其中的目標、決策、diff、驗證與未完成事項，並將恢復資料交給新啟動的 Pi 作為 context；不重建 shell 程序或恢復批准狀態。只讀回 session 檔案、未把恢復資料送達模型，不算完成 resume 契約。
 - 落盤前盡力遮罩已知 secret 模式，但不宣稱完整偵測；session 不加密。
 - 同名 session 無法唯一解析時回 `E_SESSION_AMBIGUOUS` 並列出 ID 與時間。
 - **（ADR-002）** Pi 子行程一律以 `--no-session` 啟動，停用其自身的 session 持久化；Brunel 自己的 `events.jsonl` 是唯一對外正式紀錄，由 `internal/pirpc` 轉譯 Pi RPC event 後 append 寫入。
 
 ### 7.2 Context
 
-Context 必須保留使用者指令、目前目標、使用者決策、適用的 AGENTS.md、已修改檔案、最新 diff、驗證結果、未解錯誤與未完成事項。冗長或過時工具輸出可摘要或裁剪，但原始 event 仍留在 append-only log。
+Context 所需資料包含使用者指令、目前目標、使用者決策、適用的 AGENTS.md、已修改檔案、最新 diff、驗證結果、未解錯誤與未完成事項。Host 負責保存已收到的事件與恢復資料、提供啟動／resume context，並保留原始 event 供回查；Pi 負責 run 內的 context 管理、摘要與裁剪。Host 不建立第二套模型 context 裁剪器，也不驗收 Pi 摘要的語意完整性。
+
+resume 仍須滿足 §7.1 的恢復承諾；缺失資料不得編造，應揭露缺口。Pi 裁剪後的規則送達限制依 OQ-11 處理；不能因 Host 保存了原始事件，就宣稱模型當下仍持有全部 context。AC-13／AC-14 分別驗證恢復資料送達與原始紀錄可回查，不要求新增強制 compaction 的產品介面。
 
 ### 7.3 AGENTS.md
 
@@ -369,7 +375,7 @@ Report 以 UTF-8 JSON 寫入 workspace 內既存父目錄，採暫存檔後原�
 | ID | 輸入要求 | 成功輸出 | 失敗行為 |
 |---|---|---|---|
 | CT-1 CLI | 互動模式需 TTY；單次 task 不得為空 | TUI 或純文字串流 | 空 task 回 `E_INVALID_ARGUMENT`，不呼叫 provider |
-| CT-2 Workspace | 啟動目錄存在、可讀且可解析真實路徑 | session 固定 root identity | 無效回 `E_WORKSPACE_INVALID`；不得 fallback |
+| CT-2 Workspace | 啟動目錄存在、可讀且可解析真實路徑 | 綁定 root identity；Host session 的後續工具呼叫比對同一 identity（範圍見 INV-5） | 無效回 `E_WORKSPACE_INVALID`；identity 比對失敗回 `E_WORKSPACE_UNBOUND`；不得 fallback |
 | CT-3 Tool call | 名稱屬 8 工具且參數符合 schema | 結構化結果與終態 event | 未知或錯型參數不得自行補值 |
 | CT-4 寫入 | hash 與 patch context 正確 | 原子寫入與新 hash | 任一失敗保留完整原檔 |
 | CT-5 PowerShell | pwsh 7、cwd 位於 workspace、限制值明確 | 受 Job Object 控制的結果 | 需確認、取消、逾時均有穩定錯誤與終態 |
@@ -389,11 +395,13 @@ Report 以 UTF-8 JSON 寫入 workspace 內既存父目錄，採暫存檔後原�
 | INV-2 `[FROZEN]` | events.jsonl 只 append | resume 或摘要後舊 bytes 改變 | 摘要前後比較既有 prefix |
 | INV-3 `[FROZEN]` | TUI／sink 不得授權或改變 agent 決策 | presentation 事件直接執行工具 | fake sink 不得影響工具結果 |
 | INV-4 `[FROZEN]` | 只有安全決策入口可呼叫 Approver | TUI 直接放行工具或 agent 繞過 gate | fake approver 與拒絕路徑 integration test |
-| INV-5 | workspace root identity 在 session 內不變 | junction 替換後操作到另一位置 | identity 與逃逸回歸測試 |
+| INV-5（Alpha 1 best-effort） | Host session 綁定的 workspace root identity 傳給每次工具呼叫；新綁定 identity 不符時，在工具 I/O 前拒絕。檢查至實際 I/O 的 TOCTOU 為已接受限制 | 呼叫前已換指向仍操作到另一位置，或遺失 Host 傳入的 identity | 跨呼叫換指向拒絕且無副作用、identity 傳遞與既有路徑逃逸回歸測試 |
 | INV-6（best-effort） | 寫入不覆蓋未知新版本：`expected_hash` 前置條件 + 鎖內重驗 hash + 暫存檔原子換檔；hash 不符／patch conflict／寫入失敗一律保留原檔。無法完全消除鎖內重驗與換檔之間的 sub-millisecond rename 競態（見 OQ-10）。 | stale 或失敗後檔案 hash 改變 | stale、conflict、磁碟錯誤、鎖衝突有界失敗測試 |
 | INV-7 | 取消或逾時不留下子孫程序 | run 結束後程序仍存活 | Job Object E2E |
 | INV-8 | completed report 只含已有終態的 tool call | pending call 被宣稱完成 | 逐項移除終態的反例測試 |
 | INV-9 `[FROZEN]`（ADR-002） | `internal/pirpc` 絕不主動送出 `{"type":"bash"}` RPC command | Pi host-level bash side channel 被 Brunel 自己的 client 使用 | 對 `internal/pirpc` 原始碼做 CI lint／AST 檢查，禁止出現該 literal；見 Issue #24 Gate 2 |
+
+INV-5 範圍依 DECISIONS.md 2026-10-01 裁決：新版 Host 將啟動時綁定的 identity 傳到每個 `--taylor-tool` 程序；兩次呼叫間已完成的 root 換指向必須被拒絕。舊式獨立工具呼叫未帶 session identity 時，只有單次 workspace 綁定，沒有跨呼叫保證。Bind／Resolve 的 identity 檢查與實際 I/O 之間仍可能被外部程序替換，Alpha 1 接受此 TOCTOU，不宣稱 OS sandbox 或無競態保證；若要加強，需另行裁決。這是 INV-5 的處置，不由 OQ-10 推導授權；既有 Gate、路徑逃逸、hash 與程序控制要求維持。
 
 ---
 
@@ -411,7 +419,7 @@ Report 以 UTF-8 JSON 寫入 workspace 內既存父目錄，採暫存檔後原�
 | EC-8 | 同名 session 多筆 | 回 `E_SESSION_AMBIGUOUS`；不自動挑選 |
 | EC-9 | create／patch／cleanup／resume 重複執行 | 不覆寫、不重播副作用；cleanup 對不存在目標成功 |
 | EC-10 | 磁碟滿、權限撤銷或防毒鎖檔 | 原檔保持完整；event/report 不宣稱成功 |
-| EC-11 | Provider malformed SSE、重複 tool ID 或未知 finish reason | `E_PROVIDER_PROTOCOL`；不重播可能已有副作用的 call |
+| EC-11（ADR-002） | Pi 回報 provider 協定錯誤，例如上游資料格式錯誤 | 依 CT-6 轉譯為 `E_PROVIDER_PROTOCOL`；不重播可能已有副作用的 call。SSE 解析、model probe 與 provider 重試由 Pi 負責 |
 | EC-12 | 非 Windows 或 pwsh 7 不存在 | 工作前回 `E_UNSUPPORTED_PLATFORM` 或 `E_PWSH_REQUIRED` |
 | EC-13（ADR-002） | Node.js/npm 不存在或 `pi` 無法啟動 | 工作前回 `E_PI_RUNTIME_REQUIRED`，附安裝指引連結；不得 fallback 或以其他方式模擬 Agent Loop |
 
@@ -424,7 +432,7 @@ Report 以 UTF-8 JSON 寫入 workspace 內既存父目錄，採暫存檔後原�
 | AC-1（ADR-002 修訂） | 已知依賴齊備可執行 | 已裝 Node.js/npm、pwsh 7、Git for Windows 的乾淨 Windows 11 VM 啟動 exe | 無非預期缺失；缺少已知依賴時顯示可行動錯誤訊息（不是靜默失敗），不再承諾零依賴 | E2E + 人工 |
 | AC-2 | 互動 TUI | TTY 啟動、輸入任務、resize、串流、取消 | 四個必要區域可用；無 orphan process | E2E + 人工 |
 | AC-3 | 純文字模式 | pipe 執行單次 task 與 `--report` | 不進 alternate screen；輸出與 JSON 完整 | E2E |
-| AC-4 | Provider 與憑證 | Credential Manager key、模型清單與 probe | 只用 tool-capable model；key 不落專案檔 | Integration |
+| AC-4（ADR-002） | Provider 與憑證 | 驗證 provider／model 啟動參數透傳、Credential Manager key 注入，以及 Pi provider 錯誤轉譯 | 使用者選擇傳入 Pi；key 不落專案檔，公開輸出遮罩已知 secret；錯誤碼穩定，Brunel 不另做重試。Pi 自行探索的 key 依 OQ-12 處理；模型清單、能力 probe 與 SSE 不由 Brunel 驗收 | Integration |
 | AC-5 | AGENTS.md | root／子目錄各放規則後操作子檔 | 首次操作後、同目錄後續操作時就近規則生效，且不得授權工具 | Integration |
 | AC-6 | 8 工具閉環 | 搜尋→讀取→patch→test→diff | 全部成功且 diff 正確 | E2E |
 | AC-7 | stale-write | 讀取後外部改檔再寫入 | 穩定錯誤；檔案未覆寫 | Integration |
@@ -433,8 +441,8 @@ Report 以 UTF-8 JSON 寫入 workspace 內既存父目錄，採暫存檔後原�
 | AC-10 | CONFIRM 分類 | 各類代表命令各執行一次 | 每次皆顯示命令與理由；拒絕時無副作用 | Integration |
 | AC-11 | readonly 與無 TTY | 嘗試寫入／shell；pipe 執行需確認命令 | 前者直接拒絕；後者穩定退出且不執行 | Integration |
 | AC-12 | 程序控制 | 啟動孫程序後逾時與取消 | 整棵程序樹終止 | Windows E2E |
-| AC-13 | Session | 命名、同名、異常中止、正常退出與 resume | 保存／清理／歧義行為符合 §7.1 | Integration |
-| AC-14 | Context | 觸發摘要後重載被裁剪內容 | 原 event 可定位且舊 bytes 不變 | Integration |
+| AC-13 | Session | 命名、同名、異常中止、正常退出與 resume；檢查新 Pi 收到的恢復 context | 保存／清理／歧義行為符合 §7.1；已保存的摘要、目標、決策、diff、驗證與未完成事項送達模型，且不重播副作用 | Integration |
+| AC-14 | Context 紀錄可回查 | 摘要或裁剪後，從 Brunel log 重載原始事件 | 原 event 可定位且舊 bytes 不變；驗證 Host 保存與回查，不驗收 Pi 摘要品質 | Integration |
 | AC-15 | CompletionReport | 成功、取消、工具失敗、驗證失敗、待批准 | status 與所有客觀欄位正確；JSON 原子寫入 | Integration |
 | AC-16 | 三類真實任務 | bug 修復、小功能、失敗測試診斷 | 3 個 fixture 均完成工具閉環並產生 report | Windows E2E |
 
@@ -466,7 +474,12 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 - 不得以 mock 掉安全決策入口的方式宣稱 INV-1 已驗證。
 - 不測試完整 PowerShell 語言分類；只測正式列出的代表命令。
 
-驗證順序：靜態／schema → unit → integration → Windows E2E → 乾淨 VM。前一層失敗不得由後一層成功抵銷。
+驗證依任務驗收條件與已知風險選擇；適用檢查按靜態／schema → unit → integration → Windows E2E → 乾淨 VM 的順序執行。適用檢查的失敗不得由其他檢查的成功抵銷。
+
+- 每次變更執行相關的本機針對性檢查，並核對該提交的必要 CI；文件變更以引用、契約與一致性檢查驗證。
+- 真實模型、真實終端與程序樹 E2E 由對應 AC 或已知回歸決定，不要求每個 PR 重跑整套驗收。真實模型 E2E 另採明確啟用方式，不納入預設 Unit／Integration。
+- 發布前彙整 AC-1～AC-16 的證據。AC-1 的乾淨 Windows 11 部署驗證保留；依賴與部署方式改變時補驗相關行為，其他變更可引用仍適用的證據。未驗證項目須記錄，Issue 關閉不能取代發布驗收。
+- 不為假想未來需求擴大 Windows matrix、增加真機或壓力驗證；需要超出既定驗收條件與已知風險時，先說明理由並取得使用者裁決。
 
 ---
 
@@ -474,7 +487,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 
 | 凍結範圍 | 變更時必須同步 |
 |---|---|
-| TUI、EventSink 與 Approver 邊界 | Go 介面、純文字 sink／approver、TUI 測試、CLI 文件 |
+| TUI、EventSink 與 Approver 的行為邊界 | 受影響的 Go 呼叫者、純文字 sink／approver、TUI 測試與 CLI 文件；內部型別形狀依下述例外處理 |
 | 8 個工具名稱與 schema | Go 型別、JSON schema、prompt 描述、snapshot tests |
 | 安全能力聲明與 AUTO／CONFIRM | classifier、CLI help、README、TC-SAFE |
 | CompletionReport 1.0 | Go 型別、golden JSON、README 範例、相容性說明 |
@@ -483,6 +496,8 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 | Taylor RPC client 的 `bash` 禁止清單（INV-9，ADR-002） | `internal/pirpc` 原始碼、CI lint／AST 檢查、`TC-PIRPC-001` |
 
 變更程序：提出 revision → 說明相容性 → 更新同步面 → 使用者裁決 → 提升規格版本。未完成前不得合併衝突實作。
+
+例外：保持已凍結行為的內部 Go 型別／事件表示調整，可同步實作、呼叫者與相關測試，不必經規格 revision。公開工具 schema、CompletionReport JSON、既有 session 持久化格式、安全授權與 presentation／authority 邊界不在此例外內；不能以內部重構名義變更它們。
 
 ---
 
@@ -496,7 +511,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 | DR-4 | Session | writer／reader 對 event kind 理解不同 | schema version、round trip、舊 fixture |
 | DR-5 | Completion | report 出現不可觀察的語意聲明 | schema golden 與客觀欄位 review |
 | DR-6 | Phase creep | Alpha 1 出現 benchmark、skills、subagent 邏輯 | 禁止依賴掃描與發布 checklist |
-| DR-7 | Windows | 開發機通過但 Unicode／不同 volume 失敗 | 真實 Windows matrix 與乾淨 VM |
+| DR-7 | Windows | 開發機通過但 Unicode／不同 volume 失敗 | 相關 Windows 路徑回歸測試與 AC-1 部署驗證；支援環境依 OQ-1 的實測範圍聲明 |
 
 ---
 
@@ -512,7 +527,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 | OQ-6 | 非 Git workspace diff 是否納入 Alpha 1 | 維持候選，不阻塞發布 |
 | OQ-7 | Context ledger 與 prompt 透明化是否納入 Alpha 1 | 維持候選，不阻塞發布 |
 | OQ-8（ADR-002） | Pi 版本如何釘選／升級，避免 Issue #24 Gate 1/2/3/4 證據隨版本更新失效 | 升級 Pi 版本前需重跑對應 Gate 的等價測試，不得假設行為不變 |
-| OQ-9（ADR-002） | Gate 0（未安裝 Git Bash 的乾淨環境驗證）由誰、何時補測 | 視為 Alpha 1 發布前的待確認事項；`internal/pirpc` 與 taylor-tools.ts 可先在有 Git Bash 的機器上開發，不阻塞其餘實作 |
+| OQ-9（ADR-002，2026-09-08 已確認 Alpha 1 處置） | Gate 0（未安裝 Git Bash 的乾淨環境）是否需要補測 | 依 DECISIONS.md 2026-09-08：Git for Windows 為已聲明依賴，Alpha 1 接受此風險、不補測 Gate 0，亦不宣稱已證明無 Git Bash 可執行。日後移除該依賴時重評 |
 | OQ-10 | 檔案寫入的 sub-millisecond rename 競態：外部程序在 `internal/filetools` 鎖內重驗 hash 與原子換檔之間以 rename 蓋掉目標檔，會被靜默覆寫（OS 的 byte-range lock 不擋 rename，POSIX flock 為 advisory） | Alpha 1 接受為 best-effort：併發寫入者僅為外部人為編輯，Brunel 內部無併發 writer；命中後果為單次未提交編輯遺失、非損毀、非累積、git 可救。Alpha 3「單一 writer」時重評——屆時若 Brunel 內部出現併發 writer，需加 path-keyed 序列化 |
 | OQ-11（Issue #47） | 就近 AGENTS.md 送達後，若 Pi context 被 compaction 擠出，`taylor-tools.ts` 的 per-session 已送集合仍視為已送，不會補送；該 session 內該規則等同永久遺失 | Alpha 1 接受此殘餘落差：`internal/pirpc` 現況不轉譯 `compaction_start`/`compaction_end` event（#9 範圍外），`taylor-tools.ts` 也無此訊號可用於觸發補送。比照 F-10 原裁決立場——AGENTS.md 是 context-only 規則，Go 端授權結果（gate、分類、hash 前置條件）不讀取此規則，因此不構成 AC-5「不能授權工具」的安全不變式缺口。但規則遺失仍可能改變模型在已授權範圍內選擇的動作（例如遺失資料處理或工作方式限制），此模型行為風險不因「不影響 Go 端授權」而消失，不阻塞 Alpha 1 發布但需明確揭露。日後若要修，需先讓 Pi RPC 曝露 compaction 事件給 taylor-tools.ts，屬另開 issue 的範圍 |
 
@@ -537,6 +552,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 
 | 版本 | 日期 | 修改內容 | 作者 |
 |---|---|---|---|
+| v1.3.4 | 2026-10-01 | 對齊 Pi 委派後的 AC-4／EC-11 與 Gate 0 既有決策；區分變更與發布驗證。依使用者裁決保留 resume 恢復承諾、明定 Host／Pi context 分工；接受 INV-5 檢查至 I/O 的 TOCTOU 為 Alpha 1 限制；允許維持行為與公開格式的內部 Go 型別重構。僅修訂規格，不宣稱未驗證功能已完成。 | 使用者裁決 + Codex |
 | v1.3.3 | 2026-09-19 | Issue #1 issue 治理清理的一部分：新增 §16 OQ-12（Issue #8 provider key 遮罩責任邊界未定義）、OQ-13（Issue #11 就近 AGENTS.md 送達機制 4 個邊界案例，原記於 DECISIONS.md 2026-09-18 條目但未提升為 spec OQ）。純文件記錄既有已知限制，不變更任何行為或驗收標準。 | 使用者裁決 + Claude |
 | v1.3.2 | 2026-09-18 | 依 Issue #47 裁決（DECISIONS.md 2026-09-18 條目，方向 1）改寫 §7.3 為「root 於啟動注入、子目錄規則於首次觸及該目錄的成功工具結果送達，自該次起對同目錄後續操作生效，首次操作不受此層約束」；AC-5 通過標準同步改寫為「首次操作後、同目錄後續操作時就近規則生效，且不得授權工具」；新增 §16 OQ-11 記錄 context compaction 可能擠掉已送達規則、per-session 已送集合不會補送的殘餘落差，接受為 Alpha 1 已知限制。僅文件對齊 PR #46 之後的實作（`agents-md-delivery.ts`／`taylor-tools.ts` per-session 去重），AC-5 安全不變式本身未變更。 | 使用者裁決 + Claude |
 | v1.3 | 2026-08-12 | 依 [ADR-002](adr/ADR-002-pi-agent-runtime.md) 正式修訂：G-1 放棄零依賴單檔 exe；§5 架構改為 Go Host + Pi RPC（`internal/pirpc`），8 個工具維持 Go 實作經 Taylor extension 暴露；§5.3 Provider 委派給 Pi，不再限定 OpenRouter，不再 FROZEN；新增 INV-9（`bash` command 禁止清單）；§7.1 Session 註記 Pi 自身 session 停用；§9 CT-6、§13 TC-PROV→TC-PIRPC、§14、§16 OQ-8／OQ-9 同步更新。§6（安全與事故防護）維持不變，僅註記 Pi 不繞過安全決策入口。 | 使用者裁決 + Claude（wayfinder 三題定案：8 工具全留 Go、session 以 Brunel 為準、provider 開放多家） |

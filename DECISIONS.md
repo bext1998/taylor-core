@@ -4,6 +4,22 @@
 
 ## 決策紀錄
 
+### 2026-10-01 — spec 過度工程化風險：context 分工、INV-5 邊界與內部型別凍結
+
+**決策**（使用者選擇「採用建議的三項取捨」）：
+
+1. **resume／context**：保留恢復摘要、目標、決策、diff、驗證與未完成事項的產品承諾。Host 保存已收到的紀錄並在 resume 將恢復資料交給新 Pi；Pi 負責 run 內的 context 管理、摘要與裁剪。讀回 session 不等於恢復資料已送達模型；不建立第二套 Host context 裁剪器，也不驗收 Pi 摘要的語意完整性。
+2. **INV-5**：新版 Host session 的每次工具呼叫須比對啟動時綁定的 workspace identity，拒絕呼叫前已完成的換指向。接受 #78 已揭露的檢查至實際 I/O 之間的 TOCTOU 為 Alpha 1 限制；舊式獨立呼叫不帶 session identity 時不具跨呼叫保證。此裁決獨立於 OQ-10，既有 Gate、path／hash guard 與程序控制要求維持。
+3. **內部型別凍結**：安全行為、authority／presentation 邊界、公開 JSON 與持久化相容性維持凍結。保持上述契約的內部 Go 型別／事件表示，可同步呼叫者與測試重構，不必為型別形狀變更提升規格版本。
+
+**原因**：Pi 委派後的規格仍有舊責任與未限定保證，容易引入第二套 Provider／context 邏輯或擴大驗證。使用者授權依 `docs/todo.md` 修訂 spec，並確認以上三項取捨。
+
+**影響範圍**：`docs/spec.md` v1.3.4。另對齊 AC-4／EC-11 的 Pi 委派責任、DECISIONS.md 2026-09-08 的 Gate 0 處置，並區分每次變更檢查與發布驗收。未改產品程式碼、未宣稱 AC 已通過；OQ-12／OQ-13 的正式責任與後續緩解問題不因本次修訂而解決。
+
+**狀態**：確認
+
+---
+
 ### 2026-09-28 — Issue #2：CONFIRM 批准經 named pipe 從 `--taylor-tool` 子行程送回主程式；OpenRouter 憑證改為選用
 
 **決策**（使用者裁決）：
