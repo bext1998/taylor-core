@@ -69,8 +69,8 @@ func ApplyPatch(r Resolver, path, expectedHash string, hunks []Hunk) (string, er
 // insertion point - all without ever reading file content, so a malformed
 // request never triggers the context-matching pass in applyHunks.
 func validateHunks(hunks []Hunk, total int) error {
-	prevEnd := 0   // 0 means "before line 1": no line has been claimed yet
-	prevStart := 0 // StartLine of the previous hunk (sorted order)
+	prevEnd := 0     // 0 means "before line 1": no line has been claimed yet
+	prevStart := 0   // StartLine of the previous hunk (sorted order)
 	for _, h := range hunks {
 		if h.StartLine < 1 || h.StartLine > total+1 {
 			return codeError(ErrInvalidArgument.Code, fmt.Sprintf("hunk start_line %d is out of range", h.StartLine), nil)
