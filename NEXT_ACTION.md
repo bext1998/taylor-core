@@ -4,7 +4,7 @@
 
 ## 下一個 Session 目標
 
-把 Alpha 1 剩下的**待裁決事項**一次處理完，讓剩餘工程項有明確方向。不依賴裁決的純工程項已全部完成（#14、#22、#54、#57、#63、#65 及 #29／#31／#69 的可做部分，見 `STATUS.md`）。
+把 Alpha 1 剩下的**待裁決事項**一次處理完，讓剩餘工程項有明確方向。本批次選定的工程項已合併（#14、#22、#54、#57、#63、#65、#84 及 #29／#31／#69 的可做部分，見 `STATUS.md`）；剩下的是待裁決事項，以及依 spec 才能做的後續。
 
 ## 優先行動
 
@@ -16,8 +16,8 @@
 
 - spec §16 的 OQ-3（`--report` 遇既有檔案的最終策略，目前暫行為 `E_FILE_EXISTS` 不覆寫）、OQ-12、OQ-13 尚未裁決；裁決前依各自的「裁決前行為」處理。
 - 依 spec v1.3.4 仍開著、需要設計的後續：[#52](https://github.com/bext1998/taylor-core/issues/52)／[#53](https://github.com/bext1998/taylor-core/issues/53)（Host 保存紀錄並於 resume 交給新 Pi，不另建第二套 context 管理）、[#61](https://github.com/bext1998/taylor-core/issues/61)（Pi 升級前 Gate checklist）、[#72](https://github.com/bext1998/taylor-core/issues/72)（TUI 擴充，需先修訂凍結的 §4.2）。
-- [#84](https://github.com/bext1998/taylor-core/issues/84)：`TestRunCancelAfterAppendFailure` 以固定 sleep 等待，慢 CI 偶發失敗；是不依賴裁決的小項，可隨時做。
-- 無 Alpha 1 硬阻塞。
+- 仍可執行、不需先裁決：[#55](https://github.com/bext1998/taylor-core/issues/55) 留言記錄的「寫入中取消」測試尚未補。
+- 沒有阻擋開工的設計決策；但這不表示 Alpha 1 驗收已齊備：AC-1、AC-13／14 的證據缺口仍在（#53 保留 resume 恢復承諾）。
 
 ## 參考
 

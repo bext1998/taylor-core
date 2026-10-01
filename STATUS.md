@@ -2,7 +2,7 @@
 
 > 最後同步：2026-10-02
 > Branch：main
-> 主線基準：`774f202`（PR #83 合併後）
+> 主線基準：`dfdd603`（PR #86 合併後）
 
 ## 架構轉向
 
@@ -16,7 +16,7 @@
 - [#69 承接 #4 的 minor 殘留](https://github.com/bext1998/taylor-core/issues/69) OPEN：[PR #83](https://github.com/bext1998/taylor-core/pull/83)（`774f202`，`Related to #69`）已修正第 1、2、4、5、6、7、8、9、11 項（`workspace_diff` 取消／逾時與 stderr、`search_text` 上限、`apply_patch` null 行元素、`E_FILE_NOT_FOUND`、registry 測試）並逐項重驗留紀錄。**未完成**：第 3 項（`workspace_diff` 是否含 staged／untracked）需使用者裁決語意；第 10 項（本文件對 TC-SAFE 的措辭）已於 2026-10-02 同步修正。
 - [#31 安全分類器強化](https://github.com/bext1998/taylor-core/issues/31) OPEN：[PR #82](https://github.com/bext1998/taylor-core/pull/82)（`885e8ff`，`Related to #31`）完成項次 1～3（萬用字元刪除、逗號串接路徑、串接良性命令）；審查另抓出並修正引號內分隔字元、引號字串內插值、反引號跳脫引號三個降級風險。**未完成**：項次 4（相對路徑 `..` 逃逸不分類）的 AC 要求 spec 說明，§6 為 `[FROZEN]`，需使用者／spec 修訂裁決；項次 5（可選）依 AGENTS.md 第 10 條不做。
 - [#29 taylor-tools.ts 與 `--taylor-tool` 派工](https://github.com/bext1998/taylor-core/issues/29) OPEN：[PR #78](https://github.com/bext1998/taylor-core/pull/78)（`d246008`，`Related to #29`）查證三項殘留——TS 測試 9 個全過、typebox 雙份安裝實測無衝突、INV-5 跨呼叫缺口確實存在並已修正（主程序把 session 綁定的 workspace identity 傳給每個 `--taylor-tool` 程序，不符回 `E_WORKSPACE_UNBOUND`）。DECISIONS.md 2026-10-01 已接受「檢查到實際 I/O 之間的 TOCTOU」為 Alpha 1 限制；舊式不帶 identity 的獨立呼叫沒有跨呼叫保證。「必要測試已通過」AC 已勾；其餘完成條件與是否關閉待使用者裁決。
-- 其餘開放追蹤：[#61 升級 Gate checklist](https://github.com/bext1998/taylor-core/issues/61)、[#62 Pi 錯誤碼／EC-13 對齊](https://github.com/bext1998/taylor-core/issues/62)（#63 已由 PR #80 完成並關閉）；[#52](https://github.com/bext1998/taylor-core/issues/52)／[#53](https://github.com/bext1998/taylor-core/issues/53)（context 延續與 `--resume` 重建，spec v1.3.4 已保留 resume 恢復承諾並明定 Host／Pi 分工）；[#55](https://github.com/bext1998/taylor-core/issues/55)（`--report` 的 AC 已勾兩條；錯誤碼 `E_REPORT_WRITE` 仍為暫定，待裁決）；[#72](https://github.com/bext1998/taylor-core/issues/72)（TUI 擴充評估，需先修訂凍結的 §4.2）；[#84](https://github.com/bext1998/taylor-core/issues/84)（`TestRunCancelAfterAppendFailure` 偶發失敗）。
+- 其餘開放追蹤：[#61 升級 Gate checklist](https://github.com/bext1998/taylor-core/issues/61)、[#62 Pi 錯誤碼／EC-13 對齊](https://github.com/bext1998/taylor-core/issues/62)（#63 已由 PR #80 完成並關閉）；[#52](https://github.com/bext1998/taylor-core/issues/52)／[#53](https://github.com/bext1998/taylor-core/issues/53)（context 延續與 `--resume` 重建，spec v1.3.4 已保留 resume 恢復承諾並明定 Host／Pi 分工）；[#55](https://github.com/bext1998/taylor-core/issues/55)（`--report` 的 AC 已勾兩條；錯誤碼 `E_REPORT_WRITE` 仍為暫定，待裁決）；[#72](https://github.com/bext1998/taylor-core/issues/72)（TUI 擴充評估，需先修訂凍結的 §4.2）。
 - [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1) 已依 v1.2 對齊；2026-10-02 起 #14（PR #75）、#22（PR #77）、#54（PR #76）、#65（PR #74）、#57（PR #79）、#63（PR #80）已完成並關閉；#2、#8、#11 於 2026-10-01 依使用者指示關閉，但使用者其後表示對這三項的關閉有爭議、之後再討論（見下方「已合併待關閉」）；未完成者為 #29（待關閉裁決）、#31（項次 4 待裁決）、#69（第 3 項待裁決）等。（#4、#5、#7、#9 已關閉）（#30 已於 PR #36 完成並 CLOSED）。#8、#9 已依 ADR-002／v1.3 重新拆解完成（見「架構轉向」）；#4／#8／#9 核心實作已合併（見下）；#11 核心已合併（F-10 部分實作，見下），時序語意已由 #47 於 2026-09-18 裁決（採方向 1，#47 已關閉）。
 - [#2 F-1：CLI、薄型 TUI 與 TTY 契約](https://github.com/bext1998/taylor-core/issues/2) 核心已透過 [PR #56](https://github.com/bext1998/taylor-core/pull/56) 合併至 `main`（merge commit `0c86a4c`，`Related to #2`）：`brunel`（TTY 啟動 TUI）、`brunel "<task>"`（純文字模式）、`--mode`／`--model`／`--name`／`--resume`／`--report`、退出碼 0／1／2（規格未定義數值，本 PR 自訂）；`internal/tui`（可捲動 transcript、多行輸入、狀態列、批准 modal）；`internal/approval`（每次執行專用的 Windows named pipe，把 `--taylor-tool` 子行程 Gate 的 CONFIRM 送回主程式；DACL 僅限目前使用者、拒絕遠端連線、每請求附 token、子行程讀取後移除環境變數、任何通道錯誤皆視為拒絕；見 DECISIONS.md 2026-09-28）；`go.mod` 升至 `go 1.25.0`（Bubble Tea v2.0.9、x/sys v0.47.0、x/term v0.45.0）。經多輪合併前審查修正：批准提示與純文字 TTY 輸出的終端控制字元（`SanitizeForDisplay`）、長命令批准 modal 需捲讀全文才能批准（含 End 跳頁與 resize 繞過）、TUI 取消後保留 aborted session、session 關閉失敗不回成功退出碼。**AC 尚不能全數打勾**：2026-10-01 已以真實 Pi 0.85.1 與真實終端機完成人工 TTY 操作（串流、resize、批准 modal、Ctrl+C）與 pipe 模式驗證（證據見 #2 留言與已關閉的 #49），結果無問題；人工驗證中發現的串流 panic（#67）已由 PR #68 修正。第 3 個驗收框的 AC-3（`--report` 的 JSON 完整）原依賴 #14，**#14 已由 PR #75 完成**（`modified_files`、`diff`、`verifications`、`tool_failures`、`pending_approval` 皆由 run 事實填入，並以真實 Pi 實跑確認）；#54 已由 PR #76 完成（無 TTY 遇需確認命令立即以 `E_APPROVAL_REQUIRED_NO_TTY` 非零結束）；`brunel login`／`logout` 由 PR #74 新增。AC-1 未逐條驗證（沒有乾淨 Windows 11 VM 啟動與缺依賴錯誤的驗證紀錄）。**#2 於 2026-10-01 依使用者指示以 completed 關閉，使用者之後表示對關閉有爭議、之後再討論。**已知未處理：子行程被取消後 TUI 上已開的批准 modal 不會自動關閉（無安全影響）；`taylor-tools.ts` 預設從 `brunel.exe` 同目錄載入，部署佈局屬 #43／#49。後續：#52（同一 session 多任務 context）、#53（`--resume` 重建 context）、#54（無 TTY 遇需確認命令時未立即以非零結束 run）、#55（`--report` 的 CT-8 路徑前置條件，銜接 #14）。Issue 關閉待使用者裁決 AC-3 範圍。
 - [#4 F-3：8 個固定內建工具與凍結 schema](https://github.com/bext1998/brunel/issues/4) 的 `internal/tools` 核心實作已透過 PR #33 合併至 `main`：固定 registry、嚴格 JSON／必填欄位驗證（`DisallowUnknownFields`、拒 `null`／尾隨 JSON、無自動補值）、8 工具的結構化 `Result`，以及每個 I/O 路徑在 workspace resolve、`filetools`、Git 或 PowerShell 前經真實 `safety.Gate.Decide`（INV-1）。新增 `list_files`、`search_text`、Git-only `workspace_diff`；其餘工具接上既有 `filetools`／`exec`。經兩個隔離 Sonnet subagent 審查並修正兩個 major（INV-1 no-bypass 測試補齊 8 工具的 `Registry{Gate:nil}` 反例；`tools.ErrorCode` 串接 `safety`／`workspace`／`filetools`／`exec` 的 `ErrorCode`）。registry 層的測試涵蓋 INV-1 no-bypass（8 工具）、readonly 拒絕、批准被拒無副作用與錯誤碼串接，Windows AC-6 閉環測試通過（TC-SAFE 的分類細節測在 `internal/safety`，registry 層沒有逐類 CONFIRM 命令的覆蓋）；CI `windows-latest`＋`ubuntu-latest` 綠。殘留 minor／nit（`workspace_diff` timeout 混碼與漏 staged／untracked、`search_text` 無上限、`max_depth:0` 未文件化、巢狀 null coerce 等）記於 [#4 review 註解](https://github.com/bext1998/brunel/issues/4#issuecomment-5620453317)。`--taylor-tool` 進入點與 `taylor-tools.ts` 已由 PR #37（#29 核心）合併；Pi bridge 已由 PR #40（#9 核心）合併，見下方 #9 條目。 **2026-10-01 已以 completed 關閉**：8 個固定工具皆已在真實 Pi 下成功呼叫（`create_file`／`write_file` 補驗見 #4 留言，雜湊已獨立核對），10 項 minor 改由 [#69](https://github.com/bext1998/taylor-core/issues/69) 承接。
@@ -31,7 +31,7 @@
 - 無規格決策阻塞 Alpha 1 實作。`docs/spec.md` §5／§9 的 Route B 修訂已於 v1.3（`7e9e01e`）完成。
 - #13（完成證據狀態機）與 #15（Smoke Benchmark Runner）已依 v1.2 以 `not planned` 關閉。
 - 2026-10-02：`docs/spec.md` 已升至 **v1.3.4**（PR #81，依 `docs/todo.md` 與 DECISIONS.md 2026-10-01 的使用者裁決）：保留 resume 恢復承諾並明定 Host／Pi context 分工、接受 INV-5 的檢查至 I/O TOCTOU 為 Alpha 1 限制、允許維持行為與公開格式的內部 Go 型別重構、區分變更驗證與發布驗證；OQ-12／OQ-13 不因此解決。
-- 可執行前線（無開放阻塞）：已無不依賴裁決的純工程項；剩餘多為待裁決（#31 項次 4、#69 第 3 項、#55 錯誤碼、#62 名稱、#2／#8／#11 的關閉爭議、#29 關閉）或依 spec 的後續（#52、#53、#61、#72、#84）。 #14 的 `Diff` 由 Brunel 收尾時自行取 `git diff`（含 agent 新建的檔案），不依賴 `workspace_diff` 工具；`workspace_diff` 本身是否含 staged／untracked 仍待裁決（#69 第 3 項）。
+- 可執行前線：本批次選定的純工程項已合併；仍開著的分兩類。**待裁決**：#31 項次 4、#69 第 3 項、#55 錯誤碼、#62 名稱、#2／#8／#11 的關閉爭議、#29 關閉。**可依 spec 做但尚未做**：#53（`--resume` 重建 context，AC-13／14 的證據缺口仍在）、#52、#61、#72，以及 #55 留言記錄的「寫入中取消」測試。「無開放阻塞」只指沒有阻擋開工的設計決策，不表示 Alpha 1 的功能／發布驗收已齊備（AC-1、AC-13／14 的證據缺口不會因 Issue 關閉或本次收尾消除）。 #14 的 `Diff` 由 Brunel 收尾時自行取 `git diff`（含 agent 新建的檔案），不依賴 `workspace_diff` 工具；`workspace_diff` 本身是否含 staged／untracked 仍待裁決（#69 第 3 項）。
 
 ## 等待 Review
 
@@ -51,7 +51,7 @@
 
 ## 最近完成
 
-- 2026-10-01～02 工程批次（皆 squash 合併；每個 PR 的 Windows／Ubuntu CI 通過，審查由 Codex 或 Pi 完成並留言於 PR）：
+- 2026-10-01～02 工程批次（皆 squash 合併；審查與 CI 逐項如下，不以「都已審查／都通過」概括）：#74～#80、#82、#83、#86 的審查結果由 Codex（#80 由 Pi）留言於各 PR，且合併前的 PR CI 通過（#83 的 Windows 第一次 run 失敗於無關的 agent 測試，重跑通過）；**#73 與 #81 沒有 PR 審查留言，#81 最後一次 PR CI run（head `6d14ce1`）的 Windows 為失敗**（合併後 main 上 `a2c0b62` 的 CI 為成功）。**main 在 #82、#83 合併後的 push CI 曾失敗**（`885e8ff`、`774f202`），原因是 #75 讓 `Run` 一開始先跑 `git status`，使 `internal/agent` 兩個以固定 50ms sleep 等待的取消測試在負載下取消過早；由 PR #86（#84）修正，#86 合併後 main（`dfdd603`）的 CI 為成功：
   - [PR #73](https://github.com/bext1998/taylor-core/pull/73)：`AGENTS.md` 新增第 10 條「不得 over-engineering」。
   - [PR #74](https://github.com/bext1998/taylor-core/pull/74)（#65）：Credential Manager blob 先當 UTF-8、否則當 UTF-16LE 解碼，無法解讀以 `E_CONFIG_CREDENTIAL` 拒絕並提示；含 NUL 或非法 UTF-8 的 key 不得進入 Pi 環境；`CreateProcess` 失敗訊息帶 Win32 原因；新增 `brunel login`／`logout`（隱藏輸入或 stdin 第一行，不接受參數）。以暫時替換並還原真 key 的方式實測 `cmdkey` UTF-16 key、`login`／`logout`、真終端機隱藏輸入與 Ctrl+C，並以空的 `PI_CODING_AGENT_DIR` 證明該 key 確實被送到 OpenRouter（401）。
   - [PR #75](https://github.com/bext1998/taylor-core/pull/75)（#14）：CompletionReport 由工具事實填入；`completed` 在有未終態呼叫、待批准或批准被拒時降為 `incomplete`；`--report` 在 run 前檢查（workspace 內、父目錄存在、不覆寫，OQ-3 暫行規則 `E_FILE_EXISTS`），寫入以 hard link 原子發佈。
@@ -62,7 +62,8 @@
   - [PR #80](https://github.com/bext1998/taylor-core/pull/80)（#63）：Pi 版本探測改在 `KILL_ON_JOB_CLOSE` Job Object 內執行，任何結束方式皆終止整個 job；新測試以握著 stdout 的孫程序驗證三種結束方式，換回舊實作會失敗。
   - [PR #81](https://github.com/bext1998/taylor-core/pull/81)：spec v1.3.4，見「阻塞 Issues」。
   - [PR #82](https://github.com/bext1998/taylor-core/pull/82)（#31 項次 1～3）、[PR #83](https://github.com/bext1998/taylor-core/pull/83)（#69），見上方「進行中 Issues」。
-- 同一批次新開 [#72](https://github.com/bext1998/taylor-core/issues/72)（TUI 擴充評估）與 [#84](https://github.com/bext1998/taylor-core/issues/84)（`TestRunCancelAfterAppendFailure` 偶發失敗）。
+  - [PR #86](https://github.com/bext1998/taylor-core/pull/86)（#84）：取消測試改為等 run 處理過第一個 text delta 再取消，斷言不變；24 個空轉 pwsh 負載下原測試連跑 15 次失敗 20 個斷言、修正後全過。
+- 同一批次新開 [#72](https://github.com/bext1998/taylor-core/issues/72)（TUI 擴充評估）；[#84](https://github.com/bext1998/taylor-core/issues/84) 已由 PR #86 關閉。
 
 - 2026-10-01 真實 Pi 驗證與收尾：#49 已以 completed 關閉（AC-6、AC-9、#8 透傳／注入、#11 就近規則送達皆通過）。8 個固定工具先前只跑過 6 個，`create_file`、`write_file` 於後續補驗成功（雜湊已獨立核對）。#4 於同日以 completed 關閉；#5／#7／#9 早於 2026-09-18 關閉，本文件先前仍把它們列為待關閉，已更正。
 - [PR #68](https://github.com/bext1998/taylor-core/pull/68)（#67，`Related to #67`）已 squash 合併（`ff518a1`）：互動 TUI 串流回覆第二個片段起 panic（`model.assistant` 為 `strings.Builder`，Bubble Tea 每則訊息複製 model）改為 `string`，新增 `TestStreamingSurvivesModelCopies`。由 codex 審查後合併；#67 已關閉。
@@ -113,4 +114,4 @@
 - `go.mod` 已於 PR #56 升至 `go 1.25.0`；新增或升級依賴時須確認其 `go` 指令不高於 1.25（`AGENTS.md` 已載明）。
 - PR #56 的批准通道與 TUI：2026-10-01 已由作者在真實終端機人工驗證（串流、resize、批准 modal 的 `y`／`n`、Ctrl+C 取消、離開後無殘留 Brunel／Pi 程序）；驗證中發現的串流 panic（`strings.Builder` 被值複製，#67）已由 PR #68 修正。離開後的殘留程序檢查是事後以命令列判斷，沒有在執行中做「有→無」對照。
 
-- 2026-10-01～02 批次的未驗證項：`pending_approval` 僅有單元測試，未在真實 TTY 批准流程下實測；TUI 路徑（PR #76 之後）沒有用真實 TUI 驗證；E2E fixtures 只對單一模型各跑一次；INV-5 的 `--workspace-id` 在舊式獨立呼叫端缺席時不檢查；PR #82 的分類器仍為 best-effort（項次 4 相對路徑 `..` 逃逸不分類）。
+- 2026-10-01～02 批次的未驗證項：`pending_approval`：無 TTY 的情境已由 PR #76 以真實 Pi 驗證（報告 `incomplete` 並帶該欄位），但「TTY 批准中繼器提供 `pending_approval`」的情境（批准提示開著時被取消）未實測，只有單元測試；TUI 路徑（PR #76 之後）沒有用真實 TUI 驗證；E2E fixtures 只對單一模型各跑一次；INV-5 的 `--workspace-id` 在舊式獨立呼叫端缺席時不檢查；PR #82 的分類器仍為 best-effort（項次 4 相對路徑 `..` 逃逸不分類）。
