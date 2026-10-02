@@ -4,24 +4,20 @@
 
 ## 下一個 Session 目標
 
-把 Alpha 1 剩下的**待裁決事項**一次處理完，讓剩餘工程項有明確方向。本批次選定的工程項已合併（#14、#22、#54、#57、#63、#65、#84 及 #29／#31／#69 的可做部分，見 `STATUS.md`）；剩下的是待裁決事項，以及依 spec 才能做的後續。
+Alpha 1 工程項已全數合併，AC-1 已於 spec v1.3.6 改為不要求乾淨 VM，沒有待補的驗收項目。GitHub 上開著的只有 [#1](https://github.com/bext1998/brunel/issues/1)（總追蹤）與 [#72](https://github.com/bext1998/taylor-core/issues/72)（TUI 擴充評估）。
 
 ## 優先行動
 
-1. **裁決並處理 #2、#8、#11 的關閉爭議**：三者於 2026-10-01 依指示關閉，使用者其後表示有爭議、之後再討論。決定重開、維持關閉或改以新 Issue 承接殘留（#2 的 AC-1 無驗證紀錄；#8 的 OQ-12、#11 的 OQ-13 責任邊界未裁決）。
-2. **裁決三個卡住實作的小決定**：[#31](https://github.com/bext1998/taylor-core/issues/31) 項次 4（相對路徑 `..` 逃逸是否在 spec §6.2 補說明；§6 為 `[FROZEN]`）、[#69](https://github.com/bext1998/taylor-core/issues/69) 第 3 項（`workspace_diff` 是否含 staged／untracked）、[#55](https://github.com/bext1998/taylor-core/issues/55) 的 `--report` 錯誤碼（目前 `E_REPORT_WRITE` 為暫定）。同時決定 [#62](https://github.com/bext1998/taylor-core/issues/62) 的 Pi runtime 錯誤碼名稱（spec 寫 `E_PI_RUNTIME_REQUIRED`、程式為 `E_RUNTIME_REQUIRED`）。
-3. **決定 [#29](https://github.com/bext1998/taylor-core/issues/29) 是否關閉**：所有 AC、CI、PR 均有證據，INV-5 的 TOCTOU 殘餘限制已於 DECISIONS.md 2026-10-01 接受。
+1. 發布前依 spec §13 彙整 AC-1～AC-16 證據（`STATUS.md`「Alpha 1 發布缺口」已列出），再依使用者決定處理 #1 的關閉與發布。
+2. 不需要再補任何驗證。AC-14 已由 `internal/session` 的測試補上「存 summary 後原始 bytes 不變、原 event 可讀回」。
 
-## 阻塞與待決策
+## 待決策
 
-- spec §16 的 OQ-3（`--report` 遇既有檔案的最終策略，目前暫行為 `E_FILE_EXISTS` 不覆寫）、OQ-12、OQ-13 尚未裁決；裁決前依各自的「裁決前行為」處理。
-- 依 spec v1.3.4 仍開著、需要設計的後續：[#52](https://github.com/bext1998/taylor-core/issues/52)／[#53](https://github.com/bext1998/taylor-core/issues/53)（Host 保存紀錄並於 resume 交給新 Pi，不另建第二套 context 管理）、[#61](https://github.com/bext1998/taylor-core/issues/61)（Pi 升級前 Gate checklist）、[#72](https://github.com/bext1998/taylor-core/issues/72)（TUI 擴充，需先修訂凍結的 §4.2）。
-- 仍可執行、不需先裁決：[#55](https://github.com/bext1998/taylor-core/issues/55) 留言記錄的「寫入中取消」測試尚未補。
-- 沒有阻擋開工的設計決策；但這不表示 Alpha 1 驗收已齊備：AC-1、AC-13／14 的證據缺口仍在（#53 保留 resume 恢復承諾）。
+- **#72**：要不要做、做什麼範圍，由使用者決定；需先修訂凍結的 §4.2。
+- spec §16：OQ-1（Windows 最低支援版本，發布聲明不超出實測版本）、OQ-3 未裁決；OQ-12／OQ-13／OQ-14 已接受為 Alpha 1 限制。
 
 ## 參考
 
-- `STATUS.md`（本批次逐項結果與未驗證項）
-- `DECISIONS.md`（2026-10-01 spec 過度工程化風險的裁決）
-- `docs/spec.md` v1.3.4、`docs/adr/ADR-002-pi-agent-runtime.md`
+- `STATUS.md`、`DECISIONS.md`（2026-10-02 兩則裁決）
+- `docs/spec.md` v1.3.6 §12～§13、`docs/adr/ADR-002-pi-agent-runtime.md`
 - `MAZE_PROJECT.md`

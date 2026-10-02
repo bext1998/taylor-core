@@ -1,6 +1,6 @@
 # Brunel Alpha 1 Specification
 
-**版本**：v1.3.5
+**版本**：v1.3.6
 
 **狀態**：Approved
 
@@ -430,7 +430,7 @@ INV-5 範圍依 DECISIONS.md 2026-10-01 裁決：新版 Host 將啟動時綁定�
 
 | ID | 驗收項目 | 測量方式 | 通過標準 | 自動化 |
 |---|---|---|---|---|
-| AC-1（ADR-002 修訂） | 已知依賴齊備可執行 | 已裝 Node.js/npm、pwsh 7、Git for Windows 的乾淨 Windows 11 VM 啟動 exe | 無非預期缺失；缺少已知依賴時顯示可行動錯誤訊息（不是靜默失敗），不再承諾零依賴 | E2E + 人工 |
+| AC-1（ADR-002 修訂） | 已知依賴齊備可執行 | 在已裝 Node.js/npm、pwsh 7、Git for Windows 的 Windows 開發機啟動 exe | 可正常啟動；這些依賴是已聲明的前提，不另測缺少它們的情境，不再承諾零依賴 | 人工 |
 | AC-2 | 互動 TUI | TTY 啟動、輸入任務、resize、串流、取消 | 四個必要區域可用；無 orphan process | E2E + 人工 |
 | AC-3 | 純文字模式 | pipe 執行單次 task 與 `--report` | 不進 alternate screen；輸出與 JSON 完整 | E2E |
 | AC-4（ADR-002） | Provider 與憑證 | 驗證 provider／model 啟動參數透傳、Credential Manager key 注入，以及 Pi provider 錯誤轉譯 | 使用者選擇傳入 Pi；key 不落專案檔，公開輸出遮罩已知 secret；錯誤碼穩定，Brunel 不另做重試。Pi 自行探索的 key 依 OQ-12 處理；模型清單、能力 probe 與 SSE 不由 Brunel 驗收 | Integration |
@@ -475,11 +475,11 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 - 不得以 mock 掉安全決策入口的方式宣稱 INV-1 已驗證。
 - 不測試完整 PowerShell 語言分類；只測正式列出的代表命令。
 
-驗證依任務驗收條件與已知風險選擇；適用檢查按靜態／schema → unit → integration → Windows E2E → 乾淨 VM 的順序執行。適用檢查的失敗不得由其他檢查的成功抵銷。
+驗證依任務驗收條件與已知風險選擇；適用檢查按靜態／schema → unit → integration → Windows E2E 的順序執行。適用檢查的失敗不得由其他檢查的成功抵銷。
 
 - 每次變更執行相關的本機針對性檢查，並核對該提交的必要 CI；文件變更以引用、契約與一致性檢查驗證。
 - 真實模型、真實終端與程序樹 E2E 由對應 AC 或已知回歸決定，不要求每個 PR 重跑整套驗收。真實模型 E2E 另採明確啟用方式，不納入預設 Unit／Integration。
-- 發布前彙整 AC-1～AC-16 的證據。AC-1 的乾淨 Windows 11 部署驗證保留；依賴與部署方式改變時補驗相關行為，其他變更可引用仍適用的證據。未驗證項目須記錄，Issue 關閉不能取代發布驗收。
+- 發布前彙整 AC-1～AC-16 的證據。依賴或部署方式改變時補驗相關行為，其他變更可引用仍適用的證據。未驗證項目須記錄，Issue 關閉不能取代發布驗收。
 - 不為假想未來需求擴大 Windows matrix、增加真機或壓力驗證；需要超出既定驗收條件與已知風險時，先說明理由並取得使用者裁決。
 
 ---
@@ -512,7 +512,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 | DR-4 | Session | writer／reader 對 event kind 理解不同 | schema version、round trip、舊 fixture |
 | DR-5 | Completion | report 出現不可觀察的語意聲明 | schema golden 與客觀欄位 review |
 | DR-6 | Phase creep | Alpha 1 出現 benchmark、skills、subagent 邏輯 | 禁止依賴掃描與發布 checklist |
-| DR-7 | Windows | 開發機通過但 Unicode／不同 volume 失敗 | 相關 Windows 路徑回歸測試與 AC-1 部署驗證；支援環境依 OQ-1 的實測範圍聲明 |
+| DR-7 | Windows | 開發機通過但 Unicode／不同 volume 失敗 | 相關 Windows 路徑回歸測試與 AC-1；支援環境依 OQ-1 的實測範圍聲明 |
 
 ---
 
@@ -520,7 +520,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 
 | ID | 待裁決事項 | 裁決前行為 |
 |---|---|---|
-| OQ-1 | Windows 最低支援版本與乾淨 VM matrix | 發布聲明不超出實測版本 |
+| OQ-1 | Windows 最低支援版本 | 發布聲明不超出實測版本 |
 | OQ-2 | `brunel.exe` 是否做程式碼簽章 | Alpha 版揭露 SmartScreen；不阻塞實作 |
 | OQ-3 | `--report` 遇到既有檔案是否新增 overwrite flag | 回 `E_FILE_EXISTS`，不覆寫 |
 | OQ-4 | events.jsonl 尾端殘片是否可自動截除 | 不改原檔；隔離殘片並警告 |
@@ -554,6 +554,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 
 | 版本 | 日期 | 修改內容 | 作者 |
 |---|---|---|---|
+| v1.3.6 | 2026-10-02 | 依使用者裁決修訂 AC-1：不再要求乾淨 Windows 11 VM 部署驗證，改在符合依賴的開發機啟動 exe，並明定 Node.js/npm、pwsh、Git 為已聲明前提、不另測缺依賴情境；同步移除 §13、DR-7、OQ-1 中對乾淨 VM 的要求。AC-1 不在 §14 FROZEN 範圍，未改任何凍結契約。 | 使用者裁決 + Claude |
 | v1.3.5 | 2026-10-02 | 依使用者委託並參考 Codex 與 Pi 的意見裁決：§4.1 補 `--report` 的失敗碼（正式化 `E_REPORT_WRITE`，並列出既有的 `E_PATH_ESCAPE`、`E_FILE_EXISTS`）；EC-13 的錯誤碼對齊既有實作為 `E_RUNTIME_REQUIRED`，並補上 `E_PI_VERSION_MISMATCH`；新增 §16 OQ-14（Issue #31 項次 4：相對路徑逃逸為已知限制）。不修改任何 `[FROZEN]` 文字。 | 使用者委託 + Claude（Codex、Pi 諮詢） |
 | v1.3.4 | 2026-10-01 | 對齊 Pi 委派後的 AC-4／EC-11 與 Gate 0 既有決策；區分變更與發布驗證。依使用者裁決保留 resume 恢復承諾、明定 Host／Pi context 分工；接受 INV-5 檢查至 I/O 的 TOCTOU 為 Alpha 1 限制；允許維持行為與公開格式的內部 Go 型別重構。僅修訂規格，不宣稱未驗證功能已完成。 | 使用者裁決 + Codex |
 | v1.3.3 | 2026-09-19 | Issue #1 issue 治理清理的一部分：新增 §16 OQ-12（Issue #8 provider key 遮罩責任邊界未定義）、OQ-13（Issue #11 就近 AGENTS.md 送達機制 4 個邊界案例，原記於 DECISIONS.md 2026-09-18 條目但未提升為 spec OQ）。純文件記錄既有已知限制，不變更任何行為或驗收標準。 | 使用者裁決 + Claude |
