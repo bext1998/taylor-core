@@ -357,3 +357,44 @@ func newTestStore(t *testing.T) *Store {
 	}
 	return store
 }
+
+// AC-14: after the session is summarized, the original events can still be
+// found and the bytes already in events.jsonl are untouched.
+func TestSummarizingDoesNotChangeOrLoseTheOriginalEvents(t *testing.T) {
+	store := newTestStore(t)
+	s, err := store.Create(CreateOptions{WorkspaceRoot: t.TempDir(), Mode: "workspace"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(s.Dir(), "events.jsonl")
+	if _, err := s.AppendEvent(EvUserInstruction, "fix the bug", 0, "user"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AppendEvent(EvAssistantText, "done", 0, "assistant"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SaveSummary(Summary{Goal: "fix the bug", Pending: []string{"none"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("saving a summary changed events.jsonl")
+	}
+	read, err := s.ReadEvents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(read.Events) != 2 || read.Events[0].Seq != 1 || read.Events[0].Kind != EvUserInstruction ||
+		!strings.Contains(string(read.Events[0].Payload), "fix the bug") || read.Events[1].Kind != EvAssistantText {
+		t.Fatalf("original events were not recoverable after summarizing: %+v", read.Events)
+	}
+}

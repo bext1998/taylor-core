@@ -38,8 +38,8 @@
 
 發布門檻是 AC-1～AC-16 全部通過（spec §12，發布驗收見 §13）。依 AGENTS.md 第 10 條，驗證範圍只到各 AC 與已知風險，不另加驗證。
 
-- **只有 AC-14 的證據缺口保留、本次不補**（見下）；其餘無待補驗收項目。AC-1 已依使用者裁決在 spec v1.3.6 改為「在符合已聲明依賴的 Windows 開發機啟動 exe」，Node.js/npm、pwsh、Git 為已聲明前提（Pi 本身就需要它們），不另測缺依賴情境，也不要求乾淨 VM。
-- **AC-2～AC-16 皆有證據（AC-14 為部分涵蓋，見下）**：AC-2、AC-10 有 2026-10-01 的人工 TTY 驗證；AC-3～AC-6、AC-9、AC-11 有真實 Pi 驗證；AC-7、AC-8、AC-12、AC-13、AC-14、AC-15 由自動化測試涵蓋（`internal/filetools`、`internal/workspace`、`internal/exec`、`internal/session`、`internal/completion`、`internal/agent`）；AC-16 三個 fixture 以 `claude-haiku-4.5` 各跑一次皆過。**AC-14 只部分涵蓋**：有摘要後從 log 重載與 append-only 的測試，但沒有「摘要前後原始 bytes 不變」的比對；依使用者指示不另補、不另開 Issue，發布時如實記為此限制。
+- **沒有待補的驗收項目。** AC-1 已依使用者裁決在 spec v1.3.6 改為「在符合已聲明依賴的 Windows 開發機啟動 exe」，Node.js/npm、pwsh、Git 為已聲明前提（Pi 本身就需要它們），不另測缺依賴情境，也不要求乾淨 VM。
+- **AC-2～AC-16 皆有證據**：AC-2、AC-10 有 2026-10-01 的人工 TTY 驗證；AC-3～AC-6、AC-9、AC-11 有真實 Pi 驗證；AC-7、AC-8、AC-12、AC-13、AC-14、AC-15 由自動化測試涵蓋（`internal/filetools`、`internal/workspace`、`internal/exec`、`internal/session`、`internal/completion`、`internal/agent`）；AC-16 三個 fixture 以 `claude-haiku-4.5` 各跑一次皆過。AC-14 由 `TestSummarizingDoesNotChangeOrLoseTheOriginalEvents`（`internal/session`）補上：存下 summary 後，`events.jsonl` 的原始 bytes 不變，原 event 仍可由 `ReadEvents` 讀回（拿掉保護、讓 `SaveSummary` 改寫事件檔時此測試會失敗）。
 - **已接受的限制（不阻塞）**：OQ-12（Pi 自行探索的 key 被回顯時只有啟發式遮罩）、OQ-13（就近 AGENTS.md 的 4 個邊界案例）、OQ-14（相對路徑逃逸不分類）、OQ-10（INV-6 best-effort）。TUI 第二任務路徑未用真實 TUI 驗證，與 `--resume` 共用機制、靠測試涵蓋。
 - **仍未裁決**：OQ-1（Windows 最低支援版本；發布聲明不超出實測版本，只實測過這台開發機）、OQ-3（`--report` 既有檔案，暫行不覆寫）。
 
